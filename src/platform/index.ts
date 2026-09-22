@@ -77,7 +77,7 @@ export async function saveBytes(bytes: Uint8Array, desktopPath: string, androidN
     await Filesystem.writeFile({ path: androidName, data: btoa(bin), directory: Directory.Data, recursive: true });
     return (await Filesystem.getUri({ path: androidName, directory: Directory.Data })).uri;
   }
-  return URL.createObjectURL(new Blob([bytes]));
+  return URL.createObjectURL(new Blob([bytes as BlobPart]));
 }
 
 /** Turn a stored path/URL into something an <img> can load. */
