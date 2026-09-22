@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mosslight",
+  "version": "../package.json",
+  "identifier": "com.mosslightstudios.gamehub",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Mosslight Game Hub",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 600,
+        "backgroundColor": "#0d0f0d",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": { "enable": true, "scope": ["**"] }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "app", "dmg"],
+    "createUpdaterArtifacts": true,
+    "publisher": "Mosslight Studios",
+    "category": "DeveloperTool",
+    "shortDescription": "Multi-agent game development hub",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": { "installMode": "currentUser" }
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "11.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDczMDg5NkM1NEIwRDNBNkEKUldScU9nMUx4WllJYzNhV0VnUnJoSG0xSFFnUUVGMFRWalUzbytaYWx4dnFSL1Jld3RVaTI4UlMK",
+      "endpoints": [
+        "https://github.com/amosley0221/Mosslight-Game-Hub/releases/latest/download/latest.json"
+      ],
+      "windows": { "installMode": "passive" }
+    }
+  }
+}

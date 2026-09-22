@@ -1,0 +1,9 @@
+{
+  "appId": "com.mosslightstudios.gamehub",
+  "appName": "Mosslight",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}
