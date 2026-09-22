@@ -57,8 +57,7 @@ jobs:
           git add package.json src-tauri/Cargo.toml
           git diff --cached --quiet || git commit -m "Release v$V"
           git push origin "HEAD:$GITHUB_REF_NAME"
-          git tag "v$V"
-          git push origin "v$V"
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then echo "Tag v$V already exists - rebuilding it"; else git tag "v$V" && git push origin "v$V"; fi
       - name: Check tagged version matches package.json
         if: github.event_name == 'push'
         run: |
@@ -70,7 +69,8 @@ jobs:
           T: ${{ steps.v.outputs.tag }}
         run: |
           gh release view "$T" >/dev/null 2>&1 || gh release create "$T" --draft --verify-tag --title "Mosslight $T" --notes-file notes.md
-          ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name==\"$T\") | .id" | head -1)
+          ID=$(gh release view "$T" --json databaseId --jq .databaseId)
+          [ -n "$ID" ] || { echo "Could not find release $T"; exit 1; }
           echo "id=$ID" >> "$GITHUB_OUTPUT"
 
   desktop:
@@ -107,6 +107,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.prepare.outputs.release_id }}
+          tagName: ${{ needs.prepare.outputs.tag }}
           args: ${{ matrix.args }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
