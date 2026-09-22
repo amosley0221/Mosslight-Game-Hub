@@ -39,7 +39,7 @@ jobs:
       - name: Generate app icons
         run: |
           set -euo pipefail
-          sudo apt-get install -y imagemagick >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null
           convert -size 1024x1024 radial-gradient:'#243022'-'#080908' bg.png
           convert bg.png \( -size 1024x1024 xc:none -fill white -draw "roundrectangle 0,0,1023,1023,190,190" \) \
             -compose DstIn -composite rounded.png
