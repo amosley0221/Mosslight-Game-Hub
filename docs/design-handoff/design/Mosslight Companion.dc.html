@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./image-slot.js"></script>
+<script src="./hub-core.js"></script>
+<style>
+html,body{margin:0;padding:0;min-height:100%;background:#0d0f0d;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+[data-theme]{--font:-apple-system,BlinkMacSystemFont,'Helvetica Neue',system-ui,sans-serif;--mono:'SF Mono',Menlo,Consolas,monospace}
+[data-theme="dark"]{--bg:radial-gradient(1100px 600px at 20% -10%,#1a2119 0%,#0d0f0d 45%,#080908 100%);--surface:rgba(214,196,160,.03);--panel:rgba(214,196,160,.05);--well:rgba(214,196,160,.05);--text:#efe6d3;--text-2:#cdbf9f;--muted:#8f8672;--dim:#5c5749;--chip-bg:rgba(8,9,8,.8);--chip-text:#e6dcc6;--line:rgba(214,196,160,.1);--line-2:rgba(214,196,160,.13);--line-3:rgba(214,196,160,.28);--accent:#c9a961;--on-accent:#12140f;--accent-soft:rgba(201,169,97,.14);--accent-line:rgba(201,169,97,.4);--green:#3f6b3a;--green-soft:rgba(63,107,58,.25);--ag-grok:#ff5fa2;--ag-codex:#38d6c4;--ag-claude:#ff8a3d;--on-agent:#111116;--shadow:none;--scrim:rgba(0,0,0,.65);--toast-bg:#e6dcc6;--toast-text:#12140f;--blur:blur(24px);--danger:#ff6b6b}
+[data-theme="light"]{--bg:#f3eee2;--surface:#f9f5ea;--panel:#fdfaf2;--well:#e8dfca;--text:#1f261c;--text-2:#46503f;--muted:#76705f;--dim:#a39c88;--chip-bg:rgba(253,250,242,.9);--chip-text:#1f261c;--line:rgba(47,66,42,.1);--line-2:rgba(47,66,42,.13);--line-3:rgba(47,66,42,.28);--accent:#2f5a2b;--on-accent:#f7f1e1;--accent-soft:rgba(47,90,43,.1);--accent-line:rgba(47,90,43,.35);--green:#2f5a2b;--green-soft:rgba(47,90,43,.12);--tan:#b8924a;--ag-grok:#c9377f;--ag-codex:#0e8f82;--ag-claude:#c95c14;--on-agent:#ffffff;--shadow:0 1px 2px rgba(31,38,28,.05),0 8px 24px rgba(31,38,28,.06);--scrim:rgba(31,38,28,.35);--toast-bg:#1f261c;--toast-text:#f7f1e1;--blur:none;--danger:#c44536}
+a{color:var(--accent);text-decoration:none}a:hover{opacity:.8}
+button{font-family:inherit;cursor:pointer}
+textarea,input{font-family:inherit;color:inherit}
+textarea:focus,input:focus{outline:none}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px 20px;background:#0d0f0d;color:#c9c8d1;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',system-ui,sans-serif">
+  <div style="display:flex;gap:14px;align-items:center;font-size:13px">
+    <a href="Mosslight Game Hub.dc.html" style="color:#c9c8d1;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 10px;font-weight:600">← Mosslight desktop</a>
+    <span style="color:#8f8e99">Android companion · same library, launches on the phone</span>
+  </div>
+  <x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ isDark }}" hint-size="412px,892px">
+    <div data-theme="{{ theme }}" style="height:100%;display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:var(--font)">
+      <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:18px 18px 10px;display:flex;justify-content:space-between;align-items:flex-end">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px"><img src="assets/mosslight-wordmark.png" alt="Mosslight" style="height:34px;width:auto;display:block"></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">{{ librarySubtitle }}</div>
+          </div>
+          <span style="font-size:11px;font-weight:600;color:{{ settings.pairColor }};border:1px solid var(--line-2);border-radius:999px;padding:4px 9px">{{ settings.deviceLabel }}</span>
+        </div>
+        <div style="flex:1;overflow:auto;padding:6px 14px 20px;display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ tiles }}" as="p" hint-placeholder-count="3">
+            <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);animation:rise .3s ease">
+              <button onClick="{{ p.open }}" style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;width:100%;text-align:left;background:none;border:0;color:inherit;padding:0">
+                <div style="aspect-ratio:1;background:var(--well)"><image-slot id="cover-{{ p.id }}" shape="rect" placeholder="Cover"></image-slot></div>
+                <div style="padding:12px 12px 12px 0;display:flex;flex-direction:column;gap:5px;min-width:0">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="font-weight:600;font-size:15px">{{ p.name }}</span><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">{{ p.progressLabel }}</span></div>
+                  <span style="font-size:12px;color:var(--muted);line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ p.tagline }}</span>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap">
+                    <sc-for list="{{ p.engineChips }}" as="e" hint-placeholder-count="1"><span style="font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:5px;background:var(--well);border:1px solid var(--line-2)">{{ e }}</span></sc-for>
+                    <sc-for list="{{ p.platformLabels }}" as="e" hint-placeholder-count="1"><span style="font-size:9px;padding:2px 6px;border-radius:5px;border:1px solid var(--line-2);color:var(--text-2)">{{ e }}</span></sc-for>
+                  </div>
+                </div>
+              </button>
+              <sc-if value="{{ p.hasBuilds }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;gap:6px;padding:0 12px 12px;flex-wrap:wrap">
+                  <sc-for list="{{ p.builds }}" as="b" hint-placeholder-count="1">
+                    <button onClick="{{ b.launch }}" style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line-2);color:inherit;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:600;max-width:100%;min-height:32px" style-hover="border-color:var(--ag-codex)">
+                      <span style="font-size:9px;color:var(--ag-codex)">▶</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.name }}</span><span style="font-family:var(--mono);font-size:9px;color:var(--muted)">{{ b.kindLabel }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isProject }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;overflow:auto;display:flex;flex-direction:column">
+          <div style="position:relative;aspect-ratio:16/10;background:var(--well);flex:none">
+            <image-slot id="cover-{{ p.id }}" shape="rect" placeholder="Cover art"></image-slot>
+            <button onClick="{{ goLibrary }}" style="position:absolute;top:12px;left:12px;background:var(--chip-bg);border:1px solid var(--line-2);color:var(--chip-text);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;min-height:32px">← Games</button>
+          </div>
+          <div style="padding:16px 18px 24px;display:flex;flex-direction:column;gap:16px">
+            <div>
+              <div style="font-size:24px;font-weight:600;letter-spacing:-.02em">{{ p.name }}</div>
+              <p style="margin:4px 0 0;font-size:13px;color:var(--muted);line-height:1.45;text-wrap:pretty">{{ p.tagline }}</p>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px"><span>Progress</span><span style="font-family:var(--mono)">{{ p.progressLabel }}</span></div>
+              <div style="height:6px;border-radius:3px;background:var(--line-2);overflow:hidden;display:flex"><sc-for list="{{ p.agentShares }}" as="s" hint-placeholder-count="3"><div style="height:100%;width:{{ s.pct }};background:{{ s.color }}"></div></sc-for></div>
+            </div>
+            <section>
+              <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Launch on this device</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{ builds }}" as="b" hint-placeholder-count="2">
+                  <button onClick="{{ b.launch }}" style="display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;color:inherit;min-height:60px;box-shadow:var(--shadow)">
+                    <span style="width:40px;height:40px;border-radius:12px;background:var(--ag-codex);display:grid;place-items:center;color:var(--on-agent);font-size:13px;font-weight:700">▶</span>
+                    <span style="min-width:0"><span style="display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.name }}</span><span style="display:block;font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px">{{ b.byName }} · {{ b.when }}</span></span>
+                    <span style="font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:5px;border:1px solid var(--line-3);color:var(--text-2)">{{ b.kindLabel }}</span>
+                  </button>
+                </sc-for>
+                <sc-if value="{{ noBuilds }}" hint-placeholder-val="{{ false }}"><p style="margin:0;color:var(--muted);font-size:13px">No builds yet. Ask Codex below for an Android build.</p></sc-if>
+              </div>
+              <button onClick="{{ askAndroidBuild }}" style="margin-top:8px;width:100%;background:none;border:1px dashed var(--line-3);color:var(--accent);border-radius:12px;padding:11px;font-size:12px;font-weight:600;min-height:44px">Ask Codex for an Android build</button>
+            </section>
+            <section>
+              <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Stack</div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap">
+                <sc-for list="{{ p.engineChips }}" as="e" hint-placeholder-count="1"><span style="font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:6px;background:var(--well);border:1px solid var(--line-2)">{{ e }}</span></sc-for>
+                <sc-for list="{{ stackLangs }}" as="e" hint-placeholder-count="1"><span style="font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:6px;border:1px solid var(--line-2);color:var(--text-2)">{{ e }}</span></sc-for>
+                <sc-for list="{{ libraries }}" as="l" hint-placeholder-count="2"><span style="font-size:10px;padding:4px 8px;border-radius:6px;border:1px solid var(--line-2);color:var(--text-2)">{{ l.name }}</span></sc-for>
+              </div>
+            </section>
+            <section>
+              <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Up next</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ upNext }}" as="t" hint-placeholder-count="3">
+                  <button onClick="{{ t.cycle }}" style="display:flex;gap:10px;align-items:center;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:inherit;font-size:13px;min-height:44px">
+                    <span style="width:20px;height:20px;border-radius:50%;background:{{ t.color }};display:grid;place-items:center;font-size:9px;font-weight:700;color:var(--on-agent);flex:none">{{ t.glyph }}</span>
+                    <span style="flex:1;line-height:1.35">{{ t.title }}</span>
+                    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">{{ t.statusLabel }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </section>
+            <section>
+              <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Concept art</div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+                <sc-for list="{{ recentArt }}" as="a" hint-placeholder-count="2"><div style="aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--well)"><image-slot id="art-{{ a.id }}" shape="rect" placeholder="{{ a.title }}"></image-slot></div></sc-for>
+              </div>
+            </section>
+            <section>
+              <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Chat</div>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px">
+                <sc-for list="{{ recentMessages }}" as="m" hint-placeholder-count="2">
+                  <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:flex-end"><div style="max-width:86%;background:var(--accent);color:var(--on-accent);border-radius:14px 14px 4px 14px;padding:9px 11px;font-size:12px;line-height:1.45;white-space:pre-wrap">{{ m.text }}</div></div></sc-if>
+                  <sc-if value="{{ m.isAgent }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;gap:8px;align-items:flex-start">
+                      <span style="width:22px;height:22px;border-radius:50%;background:{{ m.color }};display:grid;place-items:center;font-size:9px;font-weight:700;color:var(--on-agent);flex:none">{{ m.glyph }}</span>
+                      <div style="min-width:0"><div style="font-size:11px;font-weight:600;color:{{ m.color }}">{{ m.agentName }} <span style="font-family:var(--mono);font-size:9px;color:var(--muted);font-weight:500">{{ m.routeLabel }}</span></div>
+                        <sc-if value="{{ m.pending }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:4px;padding:6px 0"><span style="width:5px;height:5px;border-radius:50%;background:{{ m.color }};animation:blink 1s infinite"></span><span style="width:5px;height:5px;border-radius:50%;background:{{ m.color }};animation:blink 1s .2s infinite"></span><span style="width:5px;height:5px;border-radius:50%;background:{{ m.color }};animation:blink 1s .4s infinite"></span></div></sc-if>
+                        <div style="font-size:12px;line-height:1.5;color:var(--text-2);white-space:pre-wrap;word-break:break-word">{{ m.text }}</div></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ m.isHandoff }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-left:30px;border:1px solid {{ m.toColor }};border-radius:12px;padding:10px;background:var(--panel);font-size:12px;line-height:1.45"><b style="color:{{ m.fromColor }}">{{ m.fromName }}</b> → <b style="color:{{ m.toColor }}">{{ m.toName }}</b>: {{ m.reason }}
+                      <sc-if value="{{ m.pendingHandoff }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:6px;margin-top:8px"><button onClick="{{ m.approve }}" style="background:{{ m.toColor }};border:0;color:var(--on-agent);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;min-height:32px">Approve</button><button onClick="{{ m.decline }}" style="background:none;border:1px solid var(--line-3);color:var(--text-2);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;min-height:32px">Decline</button></div></sc-if>
+                    </div>
+                  </sc-if>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:8px;align-items:flex-end;background:var(--panel);border:1px solid var(--line-3);border-radius:14px;padding:6px 6px 6px 12px">
+                <textarea value="{{ input }}" onChange="{{ onInput }}" onKeyDown="{{ onKey }}" rows="1" placeholder="Ask any agent…" style="flex:1;background:none;border:0;resize:none;font-size:13px;line-height:1.5;padding:8px 0"></textarea>
+                <button onClick="{{ send }}" disabled="{{ busy }}" style="background:var(--accent);border:0;color:var(--on-accent);border-radius:10px;width:36px;height:36px;font-weight:700;font-size:15px;opacity:{{ sendOpacity }}">↑</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:16px;right:16px;bottom:60px;background:var(--toast-bg);color:var(--toast-text);border-radius:12px;padding:10px 14px;font-size:12px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.3);animation:rise .25s ease;z-index:5">{{ toast }}</div>
+      </sc-if>
+    </div>
+  </x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.endRef = React.createRef(); this.state = window.HubCore ? window.HubCore.initialState() : { pending: true }; }
+  componentDidMount() { if (!window.HubCore) { const t = setInterval(() => { if (window.HubCore) { clearInterval(t); this.setState(window.HubCore.initialState()); } }, 60); } }
+  componentDidUpdate() { if (window.HubCore && !this.state.pending) window.HubCore.persist(this); }
+  renderVals() {
+    if (!window.HubCore || this.state.pending) return { theme: 'dark', isDark: true, isLibrary: true, tiles: [], settings: {} };
+    const v = window.HubCore.vals(this);
+    const proj = this.state.projects.find(p => p.id === this.state.pid);
+    return { ...v,
+      recentMessages: (v.messages || []).slice(-6),
+      askAndroidBuild: () => { this.setState({ input: 'Build an Android APK of ' + (proj ? proj.name : 'this game') + ' and push it to my phone.' }); setTimeout(() => v.send(), 0); },
+    };
+  }
+}
+</script>
+</body>
+</html>
