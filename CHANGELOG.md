@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.21.1] - 2026-09-23
+
+### Fixed
+- **Windows Defender killed local Claude Code runs.** Mosslight passed the whole context — the agent's role, your `AGENTS.md`, the story bible, the recent conversation — as a single command-line argument. A 20KB command line matches Defender's `Trojan:Win32/ClickFix` heuristic, so it terminated the run (and reported a severe threat) with nothing downloaded or executed. The context now goes in on standard input, which also keeps it clear of Windows' ~32KB argument limit that a long `AGENTS.md` plus history was heading for.
+
 ## [0.21.0] - 2026-09-23
 
 ### Fixed

@@ -304,9 +304,12 @@ function describeClaudeTool(name: string, input: Record<string, unknown> = {}): 
 
 /** Claude Code in print mode with stream-json output: steps + text as they happen. */
 async function callClaudeCli(system: string, text: string, cwd: string | undefined, model: string | undefined, runCommands: boolean, io: RunIO) {
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', ...(runCommands ? ['--allowedTools', 'Bash'] : []), '--append-system-prompt', system, ...(model ? ['--model', model] : [])];
+  // The context goes in on stdin, not as an argument: a 20KB command line trips antivirus
+  // heuristics (Windows Defender kills the process) and Windows caps arguments at ~32KB anyway.
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', ...(runCommands ? ['--allowedTools', 'Bash'] : []), ...(model ? ['--model', model] : [])];
+  const stdin = `${system}\n\n---\n\n${text}`;
   let final = '', streamed = '', tokens = 0, isError = false, sawJson = false;
-  const res = await runAgentCliStream('claude', args, text, cwd, io.runId || '', line => {
+  const res = await runAgentCliStream('claude', args, stdin, cwd, io.runId || '', line => {
     let j: any; // eslint-disable-line @typescript-eslint/no-explicit-any
     try { j = JSON.parse(line); } catch { return; }
     sawJson = true;
