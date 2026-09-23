@@ -321,6 +321,60 @@ async fn run_agent_cli(program: String, args: Vec<String>, stdin: String, cwd: O
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Serialize)]
+struct GitOutput {
+    ok: bool,
+    code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+/// Runs git in `cwd`. When `auth` is given (an HTTP Authorization header value) it is passed
+/// through GIT_CONFIG_* environment variables for github.com only — never on the command line
+/// and never written into the repo's config.
+#[tauri::command]
+async fn run_git(args: Vec<String>, cwd: Option<String>, auth: Option<String>) -> Result<GitOutput, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let git = which_any(&["git"])
+            .or_else(|| first_existing(vec![PathBuf::from(r"C:\Program Files\Git\cmd\git.exe"), PathBuf::from("/usr/bin/git")]))
+            .ok_or("Git isn't installed — get it from https://git-scm.com")?;
+        let mut cmd = command(&git);
+        cmd.args(&args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+        if let Some(dir) = cwd.filter(|d| Path::new(d).is_dir()) {
+            cmd.current_dir(dir);
+        }
+        if let Some(a) = auth {
+            cmd.env("GIT_CONFIG_COUNT", "1")
+                .env("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
+                .env("GIT_CONFIG_VALUE_0", format!("AUTHORIZATION: {a}"));
+        }
+        let out = cmd.output().map_err(|e| format!("Couldn't run git: {e}"))?;
+        Ok(GitOutput {
+            ok: out.status.success(),
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Writes a small text file (e.g. .gitignore / .gitattributes) if it doesn't exist yet.
+#[tauri::command]
+fn write_text_if_missing(path: String, text: String) -> Result<bool, String> {
+    let p = PathBuf::from(&path);
+    if p.exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&p, text).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run_app() {
     tauri::Builder::default()
@@ -339,7 +393,9 @@ pub fn run_app() {
             secret_set,
             detect_tools,
             adb_install,
-            run_agent_cli
+            run_agent_cli,
+            run_git,
+            write_text_if_missing
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mosslight");

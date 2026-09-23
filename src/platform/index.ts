@@ -116,3 +116,15 @@ export async function copyText(text: string) {
     return false;
   }
 }
+
+// ── Git (desktop) ──────────────────────────────────────────────────────────────
+export interface GitOutput { ok: boolean; code: number; stdout: string; stderr: string }
+/** Runs git; `auth` is an Authorization header value used only for github.com. */
+export const runGit = (args: string[], cwd?: string, auth?: string) => invoke<GitOutput>('run_git', { args, cwd: cwd || null, auth: auth || null });
+export const writeTextIfMissing = (path: string, text: string) => invoke<boolean>('write_text_if_missing', { path, text });
+export const pickParentFolder = async (title: string): Promise<string | null> => {
+  if (!isTauri) return null;
+  const r = await openDialog({ directory: true, multiple: false, title });
+  return typeof r === 'string' ? r : null;
+};
+export const homePath = async (...parts: string[]) => join(await homeDir(), ...parts);

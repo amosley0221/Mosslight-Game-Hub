@@ -3,7 +3,8 @@ import { AGENTS, ASSET_KINDS, ORDER, PLATFORMS, PLAT_LABEL, TOOLS, WEB_ENGINES, 
 import { totalUsage, type Hub } from '../core/store';
 import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
-import { copyText, isDesktop } from '../platform';
+import { copyText, isDesktop, openExternal } from '../platform';
+import { RepoCard } from './GitHub';
 import { Dot, Glyph, ImageSlot, coverOf } from './common';
 import { TagPicks, launchProps, recommend, tileInfo } from './Library';
 
@@ -39,6 +40,7 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
           <div className="row wrap" style={{ gap: 10 }}>
             <h1 className="h1">{p.name}</h1>
             {p.folder && <span className="mono" title={p.folder.path} style={{ fontSize: 11, color: 'var(--accent)', border: '1px solid var(--accent-line)', padding: '2px 8px', borderRadius: 6 }}>📁 {p.folder.name}</span>}
+            {p.repo && <button className="mono" onClick={() => void openExternal(`https://github.com/${p.repo!.owner}/${p.repo!.name}`)} title="Open on GitHub" style={{ fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--line-3)', background: 'none', padding: '2px 8px', borderRadius: 6 }}>⎇ {p.repo.owner}/{p.repo.name}</button>}
           </div>
           <p style={{ margin: '6px 0 12px', color: 'var(--muted)', fontSize: 14, maxWidth: '60ch' }}>{p.tagline}</p>
           <div className="row wrap" style={{ gap: 6, marginBottom: 14 }}>
@@ -99,6 +101,10 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
   const upNext = p.tasks.filter(x => x.status !== 'done').sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1)).slice(0, 5);
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+      <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
+        <h3 className="eyebrow" style={{ marginBottom: 12 }}>GitHub</h3>
+        <RepoCard hub={hub} p={p} />
+      </section>
       <section className="card" style={{ padding: 18 }}>
         <h3 className="eyebrow" style={{ marginBottom: 14 }}>Up next</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

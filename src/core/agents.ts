@@ -5,6 +5,7 @@ import type { AgentId, AgentResult, Project, Settings } from './types';
 import { detectTools, getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgentCli, saveBytes } from '../platform';
 import { localFolder } from '../sync/device';
 import { uploadImage } from '../sync/images';
+import { repoContext } from '../github/context';
 
 /** `offline`: the agent isn't configured on this device, so nothing was sent or counted. */
 export type Reply = AgentResult & { tokens: number; offline?: boolean; via?: string };
@@ -201,6 +202,9 @@ export async function respond(agent: AgentId, text: string, proj: Project | null
   const mode = agent === 'grok' || !isDesktop ? 'remote' : settings.mode?.[agent] || 'auto';
   const key = await getSecret(AGENT_KEY[agent].key);
   const cliName = agent === 'claude' ? 'Claude Code' : 'Codex CLI';
+  // Agents that can't see the project folder get the linked GitHub repo's files instead.
+  const ctx = proj?.repo ? await repoContext(proj.repo, text) : '';
+  const withRepo = ctx ? `${system}\n\n${ctx}` : system;
   let live: { text: string; tokens: number } | null = null;
   let via = '';
   let fallbackNote = '';
@@ -208,7 +212,7 @@ export async function respond(agent: AgentId, text: string, proj: Project | null
   if (mode === 'local' || (mode === 'auto' && (await localClis())[agent as 'claude' | 'codex'])) {
     const lm = settings.localModels?.[agent] || undefined;
     try {
-      live = agent === 'claude' ? await callClaudeCli(system, text, cwd, lm) : await callCodexCli(system, text, cwd, lm);
+      live = agent === 'claude' ? await callClaudeCli(cwd ? system : withRepo, text, cwd, lm) : await callCodexCli(cwd ? system : withRepo, text, cwd, lm);
       via = 'local';
     } catch (e) {
       if (mode === 'local' || !key) throw e;
@@ -216,7 +220,7 @@ export async function respond(agent: AgentId, text: string, proj: Project | null
     }
   }
   if (!live && key && mode !== 'local') {
-    live = await callApi(agent, key, settings.models[agent], system, text);
+    live = await callApi(agent, key, settings.models[agent], withRepo, text);
     via = 'api';
   }
 

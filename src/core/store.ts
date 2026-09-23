@@ -6,7 +6,7 @@ import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
 import type { AgentId, AgentMode, Asset, Build, HubData, Message, Platform, Project, Settings, Usage } from './types';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
-  copyFile, getDesktopDir, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
+  copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
   pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, type ScanResult,
 } from '../platform';
 import { OS_LABEL, deviceId, deviceOs, localFolder } from '../sync/device';
@@ -14,6 +14,8 @@ import { SyncEngine, loadSyncConfig, saveSyncConfig, type SyncConfig, type SyncS
 import { merge, toDoc } from '../sync/merge';
 import { setImageStore, uploadImage } from '../sync/images';
 import { installOrLaunch, uploadApk } from '../sync/apk';
+import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
+import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
 
 const KEY = 'gdh:state:v3';
 const SKEY = 'gdh:settings:v1';
@@ -236,6 +238,8 @@ export function useHub() {
       return { ...d, messages, usageBy, projects };
     });
     if (res.handoff) push(key, { id: uid(), type: 'handoff', from: agent, to: res.handoff.to, reason: res.handoff.reason, status: 'pending', userText: text });
+    // A local agent may have changed files — back them up if the project auto-backs up.
+    if (res.via === 'local' && proj?.repo?.auto) void backupRef.current?.(proj.id, `${AGENTS[agent].name}: ${text.split('\n')[0].slice(0, 60)}`, true);
   }, [push, patchUi]);
 
   /** GDD "Draft with X" writes the agent's reply into that section. */
@@ -284,8 +288,95 @@ export function useHub() {
     return { ...p, tasks, activity: [A(t.agent, (t.status === 'done' ? 'Completed ' : t.status === 'doing' ? 'Started ' : 'Reopened ') + t.title), ...p.activity] };
   }), [updProj]);
 
+  // ── GitHub backups ────────────────────────────────────────────────────────────
+  const backingUp = useRef(new Set<string>());
+  const backupRef = useRef<(pid: string, reason?: string, silent?: boolean) => Promise<void>>();
+  const [busyRepo, setBusyRepo] = useState<string | null>(null);
+  const myDeviceName = () => dataRef.current.devices?.[deviceId]?.name || OS_LABEL[deviceOs];
+
+  /** Commit + push the project's local folder. `silent` = no toast when there's nothing to back up. */
+  const backupNow = useCallback(async (pid: string, reason?: string, silent = false) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const lf = p && localFolder(p);
+    if (!p?.repo || !lf?.path || !isDesktop || backingUp.current.has(pid)) return;
+    backingUp.current.add(pid);
+    try {
+      const res = await backup(lf.path, reason || `Mosslight backup from ${myDeviceName()}`);
+      if (res.committed || res.pushed) {
+        updProj(pid, q => ({ ...q, repo: q.repo && { ...q.repo, lastBackup: now(), lastBackupDevice: deviceId, lastCommit: res.commit, lastError: undefined }, activity: [A('codex', `Backed up to GitHub (${q.repo?.owner}/${q.repo?.name}${res.commit ? ' @ ' + res.commit : ''})`), ...q.activity] }));
+        toast(`Backed up ${p.name} to GitHub`);
+      } else {
+        if (p.repo.lastError) updProj(pid, q => ({ ...q, repo: q.repo && { ...q.repo, lastError: undefined } }));
+        if (!silent) toast(`${p.name} is already backed up — no changes`);
+      }
+    } catch (e) {
+      const msg = String((e as Error)?.message || e);
+      updProj(pid, q => ({ ...q, repo: q.repo && { ...q.repo, lastError: msg } }));
+      toast(`Backup of ${p.name} failed: ${msg}`);
+    } finally {
+      backingUp.current.delete(pid);
+    }
+  }, [updProj, toast]);
+  backupRef.current = backupNow;
+
+  const withRepoBusy = useCallback(async (pid: string, label: string, fn: () => Promise<void>) => {
+    setBusyRepo(pid);
+    toast(label);
+    try { await fn(); } catch (e) { toast(String((e as Error)?.message || e)); } finally { setBusyRepo(null); }
+  }, [toast]);
+
+  /** Link a GitHub repo you already have. With a local folder here, the folder is connected and pushed. */
+  const linkRepo = useCallback((pid: string, owner: string, name: string) => withRepoBusy(pid, `Linking ${owner}/${name}…`, async () => {
+    const r = await getRepo(owner, name);
+    const link = { owner: r.owner.login, name: r.name, branch: r.default_branch, private: r.private, auto: true };
+    updProj(pid, q => ({ ...q, repo: link, activity: [A('codex', `Linked GitHub repo ${r.full_name}`), ...q.activity] }));
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const lf = p && localFolder(p);
+    if (lf?.path && isDesktop) {
+      const res = await connectFolder(lf.path, link.owner, link.name, p!.engines, (r.size || 0) > 0);
+      updProj(pid, q => ({ ...q, repo: q.repo && { ...q.repo, lastBackup: now(), lastBackupDevice: deviceId, lastCommit: res.commit } }));
+      toast(`${p!.name} is now backed up to ${r.full_name}${res.lfs ? '' : ' (tip: install Git LFS for big art/audio files)'}`);
+    } else {
+      toast(`Linked ${r.full_name} — agents can now read it${isDesktop ? '. Clone it to this computer to back up local work.' : ''}`);
+    }
+  }), [withRepoBusy, updProj, toast]);
+
+  /** Create a new private repo for the project (and push its local folder if it has one here). */
+  const createRepoFor = useCallback((pid: string) => withRepoBusy(pid, 'Creating a private GitHub repo…', async () => {
+    const p = dataRef.current.projects.find(x => x.id === pid)!;
+    const lf = localFolder(p);
+    let r: GhRepo | null = null;
+    for (let i = 0; i < 5 && !r; i++) {
+      const name = repoSlug(p.name) + (i ? `-${i + 1}` : '');
+      try { r = await createRepo(name, p.tagline, !(lf?.path && isDesktop)); } catch (e) { if (!/already exists/i.test(String(e))) throw e; }
+    }
+    if (!r) throw new Error('Couldn\'t find a free repo name — create it on GitHub and link it instead');
+    const link = { owner: r.owner.login, name: r.name, branch: r.default_branch || 'main', private: true, auto: true };
+    updProj(pid, q => ({ ...q, repo: link, activity: [A('codex', `Created private GitHub repo ${r!.full_name}`), ...q.activity] }));
+    if (lf?.path && isDesktop) {
+      const res = await connectFolder(lf.path, link.owner, link.name, p.engines, false);
+      updProj(pid, q => ({ ...q, repo: q.repo && { ...q.repo, branch: 'main', lastBackup: now(), lastBackupDevice: deviceId, lastCommit: res.commit } }));
+    }
+    toast(`Created ${r.full_name} (private)`);
+  }), [withRepoBusy, updProj, toast]);
+
+  const unlinkRepo = useCallback((pid: string) => {
+    updProj(pid, q => ({ ...q, repo: undefined, activity: [A('codex', `Unlinked GitHub repo ${q.repo?.owner}/${q.repo?.name} (the repo itself is untouched)`), ...q.activity] }));
+  }, [updProj]);
+
+  const setRepoAuto = useCallback((pid: string, auto: boolean) => updProj(pid, q => ({ ...q, repo: q.repo && { ...q.repo, auto } })), [updProj]);
+
+  // Automatic backups every 30 minutes (only commits when something changed).
+  useEffect(() => {
+    if (!isDesktop) return;
+    const iv = window.setInterval(() => {
+      for (const p of dataRef.current.projects) if (p.repo?.auto && localFolder(p)) void backupNow(p.id, `Auto backup from ${myDeviceName()}`, true);
+    }, 30 * 60_000);
+    return () => window.clearInterval(iv);
+  }, [backupNow]);
+
   // ── Projects ──────────────────────────────────────────────────────────────────
-  const createProject = useCallback((nf: { name: string; tagline: string; tags: string[]; engines: string[] }) => {
+  const createProject = useCallback(async (nf: { name: string; tagline: string; tags: string[]; engines: string[]; github?: boolean }) => {
     const n = nf.name.trim();
     if (!n) { toast('Give the project a name'); return false; }
     const p: Project = {
@@ -295,26 +386,34 @@ export function useHub() {
       tasks: [T('grok', 'Write the one-paragraph pitch', 'todo', 0), T('codex', 'Mood board & palette', 'todo', 0), T('claude', 'Project scaffold in ' + (nf.engines[0] ? ENGINE_BY[nf.engines[0]].name : 'chosen engine'), 'todo', 0)],
       art: [], gdd: [{ id: uid(), title: 'Pitch', agent: 'grok', body: '' }, { id: uid(), title: 'Core loop', agent: 'claude', body: '' }], builds: [], activity: [A('claude', 'Project created')],
     };
+    if (nf.github && isDesktop) {
+      // New projects get a working folder so agents can build in it and it can be pushed.
+      const dir = await homePath('Mosslight', 'Projects', repoSlug(n));
+      await writeTextIfMissing(await joinPath(dir, 'README.md'), `# ${n}\n\n${p.tagline}\n\nCreated with Mosslight Game Hub.\n`);
+      p.folder = { name: repoSlug(n), path: dir, device: deviceId };
+    }
     setData(d => ({ ...d, projects: [p, ...d.projects] }));
     patchUi({ view: 'project', pid: p.id, tab: 'overview' });
+    if (nf.github) window.setTimeout(() => void createRepoFor(p.id), 50);
     return true;
-  }, [patchUi, toast]);
+  }, [patchUi, toast, createRepoFor]);
 
   const removeProject = useCallback((pid: string) => {
     setData(d => ({ ...d, projects: d.projects.filter(p => p.id !== pid) }));
     patchUi({ view: 'library', pid: null });
   }, [patchUi]);
 
-  const openFolder = useCallback(async () => {
-    if (!isDesktop) return toast('Opening local folders needs the desktop app');
-    const path = await pickFolder();
-    if (!path) return;
+  /** Import (or re-link) a local folder as a project; picks up its GitHub remote automatically. */
+  const importFolder = useCallback(async (path: string, prefer?: string): Promise<string | null> => {
     let scan: ScanResult;
-    try { scan = await scanFolder(path); } catch (e) { return toast(String(e)); }
+    try { scan = await scanFolder(path); } catch (e) { toast(String(e)); return null; }
     const det = await detectFromScan(scan);
-    const match = (p: Project) => p.folder?.path === path || p.folder?.name === scan.name || p.name.toLowerCase() === scan.name.toLowerCase();
+    const remote = await detectRepo(path).catch(() => null);
+    const sameRepo = (p: Project) => !!remote && p.repo?.owner.toLowerCase() === remote.owner.toLowerCase() && p.repo?.name.toLowerCase() === remote.name.toLowerCase();
+    const match = (p: Project) => p.id === prefer || sameRepo(p) || p.folder?.path === path || p.folder?.name === scan.name || p.name.toLowerCase() === scan.name.toLowerCase();
     const existing = dataRef.current.projects.find(match);
     const pid = existing ? existing.id : uid();
+    const repo = remote ? { owner: remote.owner, name: remote.name, branch: remote.branch, auto: true } : undefined;
     setData(d => {
       const ex = d.projects.find(p => p.id === pid);
       if (ex) {
@@ -322,20 +421,75 @@ export function useHub() {
           ...p, folder: { name: scan.name, path, device: deviceId }, engines: p.engines.length ? p.engines : det.engines, platforms: uniq([...p.platforms, ...det.platforms]),
           stack: { ...p.stack, libraries: uniq([...p.stack.libraries, ...det.libs]), languages: uniq([...p.stack.languages, ...det.langs]) },
           builds: [...det.builds.filter(b => !p.builds.some(x => x.path === b.path || x.name === b.name)), ...p.builds],
+          repo: p.repo || repo,
           activity: [A('claude', `Linked local folder ${scan.name} (${det.builds.length} shortcuts found)`), ...p.activity],
         }) };
       }
       const p: Project = {
         id: pid, name: scan.name, tagline: 'Loaded from local folder. Ask Grok to write the pitch.', tags: det.engines.some(e => WEB_ENGINES.includes(e)) ? ['Web'] : [], engines: det.engines, platforms: det.platforms,
-        stack: { languages: det.langs, libraries: det.libs, tools: [] }, code: [], folder: { name: scan.name, path, device: deviceId },
+        stack: { languages: det.langs, libraries: det.libs, tools: [] }, code: [], folder: { name: scan.name, path, device: deviceId }, repo,
         tasks: [T('claude', 'Audit existing code & summarize state', 'todo', 0), T('grok', 'Write pitch from existing project', 'todo', 0)], art: [], gdd: [{ id: uid(), title: 'Pitch', agent: 'grok', body: '' }],
         builds: det.builds, activity: [A('claude', `Imported folder ${scan.name} (${det.builds.length} shortcuts, ${det.names.length} entries)`)],
       };
       return { ...d, projects: [p, ...d.projects] };
     });
-    patchUi({ view: 'project', pid, tab: 'builds' });
-    toast((det.engines.length ? 'Detected ' + det.engines.map(engineName).join(', ') + ' · ' : '') + (det.libs.length ? det.libs.length + ' libraries · ' : '') + det.builds.length + ' shortcut' + (det.builds.length === 1 ? '' : 's') + ' found');
+    patchUi({ view: 'project', pid, tab: 'overview' });
+    toast((det.engines.length ? 'Detected ' + det.engines.map(engineName).join(', ') + ' · ' : '') + (remote ? `GitHub ${remote.owner}/${remote.name} · ` : '') + det.builds.length + ' build' + (det.builds.length === 1 ? '' : 's') + ' found');
+    return pid;
   }, [patchUi, toast]);
+
+  const openFolder = useCallback(async () => {
+    if (!isDesktop) return toast('Opening local folders needs the desktop app');
+    const path = await pickFolder();
+    if (path) await importFolder(path);
+  }, [importFolder, toast]);
+
+  /**
+   * Bring in a project from an existing GitHub repo.
+   * Desktop: clone it into a folder you pick (the agents then work in it and backups push to it).
+   * Phone: add it to the library linked to the repo, so agents can read it.
+   */
+  const openFromGitHub = useCallback(async (r: GhRepo) => {
+    const linked = dataRef.current.projects.find(p => p.repo?.owner.toLowerCase() === r.owner.login.toLowerCase() && p.repo?.name.toLowerCase() === r.name.toLowerCase());
+    if (!isDesktop) {
+      if (linked) { patchUi({ view: 'project', pid: linked.id, tab: 'overview' }); return; }
+      const p: Project = {
+        id: uid(), name: r.name, tagline: r.description || 'Linked from GitHub.', tags: [], engines: [], platforms: ['windows'], stack: { languages: [], libraries: [], tools: [] }, code: [], folder: null,
+        repo: { owner: r.owner.login, name: r.name, branch: r.default_branch, private: r.private, auto: true },
+        tasks: [T('claude', 'Audit the repo & summarize state', 'todo', 0)], art: [], gdd: [{ id: uid(), title: 'Pitch', agent: 'grok', body: '' }], builds: [], activity: [A('claude', `Linked GitHub repo ${r.full_name}`)],
+      };
+      setData(d => ({ ...d, projects: [p, ...d.projects] }));
+      patchUi({ view: 'project', pid: p.id, tab: 'overview' });
+      toast(`Added ${r.full_name}. Open it on your computer to clone and work on it.`);
+      return;
+    }
+    const parent = await pickParentFolder(`Where should ${r.name} be cloned? (a ${r.name} folder is created inside)`);
+    if (!parent) return;
+    setBusyRepo(linked?.id || 'new');
+    toast(`Cloning ${r.full_name}…`);
+    try {
+      const dir = await cloneRepo(r.owner.login, r.name, parent);
+      const pid = await importFolder(dir, linked?.id);
+      if (pid) updProj(pid, q => ({ ...q, tagline: q.tagline.startsWith('Loaded from local folder') && r.description ? r.description : q.tagline, repo: { ...(q.repo || {}), owner: r.owner.login, name: r.name, branch: r.default_branch, private: r.private, auto: q.repo?.auto ?? true } }));
+    } catch (e) {
+      toast(String((e as Error)?.message || e));
+    } finally {
+      setBusyRepo(null);
+    }
+  }, [importFolder, patchUi, setData, toast, updProj]);
+
+  /** Clone a project's linked repo onto this computer (e.g. created from the phone or another PC). */
+  const cloneHere = useCallback(async (pid: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    if (!p?.repo || !isDesktop) return;
+    const parent = await pickParentFolder(`Where should ${p.repo.name} be cloned?`);
+    if (!parent) return;
+    await withRepoBusy(pid, `Cloning ${p.repo.owner}/${p.repo.name}…`, async () => {
+      const dir = await cloneRepo(p.repo!.owner, p.repo!.name, parent);
+      await importFolder(dir, pid);
+    });
+  }, [importFolder, withRepoBusy]);
+
 
   /** Poll linked folders + the Desktop for new shortcuts/builds (Codex drops them there). */
   useEffect(() => {
@@ -581,6 +735,7 @@ export function useHub() {
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
+    busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,
   };
 }
 

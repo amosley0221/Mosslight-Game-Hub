@@ -5,6 +5,7 @@ import type { Build, Project } from '../core/types';
 import { pct } from '../core/util';
 import { isDesktop } from '../platform';
 import { Dot, ImageSlot, Modal, asset, coverOf } from './common';
+import { RepoPicker, useGitHubAccount } from './GitHub';
 
 export function Header({ hub, onSettings }: { hub: Hub; onSettings: () => void }) {
   const { ui, data, proj, patchUi } = hub;
@@ -61,6 +62,9 @@ export function tileInfo(p: Project) {
 
 export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => void; onSettings: () => void }) {
   const { data } = hub;
+  const [fromGitHub, setFromGitHub] = useState(false);
+  const gh = useGitHubAccount();
+  const openGitHub = () => (gh.state === 'ok' ? setFromGitHub(true) : (hub.toast('Connect GitHub in Settings first'), onSettings()));
   const builds = data.projects.reduce((n, p) => n + p.builds.length, 0);
   return (
     <>
@@ -70,7 +74,8 @@ export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => voi
           <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', margin: '6px 0 0 6px' }}>Game Hub</div>
           <p className="sub">{data.projects.length} projects · {builds} test builds ready</p>
         </div>
-        <div className="row">
+        <div className="row wrap">
+          <button className="btn" onClick={openGitHub}>Open from GitHub</button>
           {isDesktop && <button className="btn" onClick={() => void hub.openFolder()}>Open local folder</button>}
           <button className="btn-accent" onClick={onNew}>New project</button>
         </div>
@@ -85,10 +90,12 @@ export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => voi
           <div className="row wrap">
             <button className="btn-accent" onClick={onNew}>New project</button>
             {isDesktop && <button className="btn" onClick={() => void hub.openFolder()}>Open local folder</button>}
+            <button className="btn" onClick={openGitHub}>Open from GitHub</button>
             <button className="btn" onClick={onSettings}>Open Settings</button>
           </div>
         </section>
       )}
+      {fromGitHub && <RepoPicker title="Open a project from GitHub" hint={isDesktop ? "Pick a repo — it's cloned into a folder you choose, and backups push back to it." : 'Pick a repo — the agents can read it from this phone.'} onPick={r => void hub.openFromGitHub(r)} onClose={() => setFromGitHub(false)} />}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
         {data.projects.map(p => {
           const t = tileInfo(p);
@@ -137,6 +144,8 @@ export function TagPicks({ tags, onToggle }: { tags: string[]; onToggle: (t: str
 
 export function NewProject({ hub, onClose }: { hub: Hub; onClose: () => void }) {
   const [nf, setNf] = useState({ name: '', tagline: '', tags: [] as string[], engines: [] as string[] });
+  const gh = useGitHubAccount();
+  const [github, setGithub] = useState(true);
   const toggle = (k: 'tags' | 'engines', v: string) => setNf(s => ({ ...s, [k]: s[k].includes(v) ? s[k].filter(x => x !== v) : [...s[k], v] }));
   const rec = recommend(nf.tags);
   return (
@@ -157,9 +166,18 @@ export function NewProject({ hub, onClose }: { hub: Hub; onClose: () => void }) 
           })}
         </div>
       </div>
+      <label className="row" style={{ gap: 10, fontSize: 13, cursor: gh.state === 'ok' ? 'pointer' : 'default', color: gh.state === 'ok' ? 'inherit' : 'var(--muted)' }}>
+        <input type="checkbox" disabled={gh.state !== 'ok'} checked={gh.state === 'ok' && github} onChange={e => setGithub(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} />
+        <span>
+          Create a private GitHub repo{gh.state === 'ok' ? ` on @${gh.login}` : ''}
+          <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>
+            {gh.state !== 'ok' ? 'Connect GitHub in ⚙ Settings to enable this.' : isDesktop ? 'Also makes a folder in ~/Mosslight/Projects that the agents work in and backups push from.' : 'Agents can read it from any device; clone it on your computer to work locally.'}
+          </span>
+        </span>
+      </label>
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <button className="btn" style={{ background: 'none', color: 'var(--text-2)' }} onClick={onClose}>Cancel</button>
-        <button className="btn-accent" style={{ padding: '9px 14px' }} onClick={() => { if (hub.createProject(nf)) onClose(); }}>Create</button>
+        <button className="btn-accent" style={{ padding: '9px 14px' }} onClick={() => void hub.createProject({ ...nf, github: gh.state === 'ok' && github }).then(ok => { if (ok) onClose(); })}>Create</button>
       </div>
     </Modal>
   );

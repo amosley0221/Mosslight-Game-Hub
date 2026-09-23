@@ -36,8 +36,23 @@ export interface Project {
   activity: Activity[];
   /** Build paths the user removed, so folder watching does not re-add them. */
   dismissed?: string[];
+  /** Linked GitHub repository (backups + context for agents). */
+  repo?: RepoLink;
   /** Last-modified time, used to merge edits from other devices. */
   u?: number;
+}
+
+export interface RepoLink {
+  owner: string;
+  name: string;
+  branch?: string;
+  private?: boolean;
+  /** Commit and push automatically after local agent runs and every 30 minutes. */
+  auto?: boolean;
+  lastBackup?: number;
+  lastBackupDevice?: string;
+  lastCommit?: string;
+  lastError?: string;
 }
 
 export type AssetKind = 'animation' | 'model' | 'texture' | 'audio' | 'font' | 'script' | 'shader' | 'image' | 'other';

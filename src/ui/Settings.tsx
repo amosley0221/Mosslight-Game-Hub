@@ -8,6 +8,7 @@ import { currentVersion, releasesUrl } from '../platform/updates';
 import { Modal, RichText, Switch, useUpdate } from './common';
 import { SyncSettings } from './SyncSettings';
 import { AgentSettings } from './AgentSettings';
+import { GitHubSettings } from './GitHub';
 
 /** Paste-an-API-key dialog. Keys go to the OS keychain (desktop) / app-private storage (Android). */
 export function KeyModal({ name, label, url, onClose, onSaved }: { name: string; label: string; url?: string; onClose: () => void; onSaved?: (has: boolean) => void }) {
@@ -117,6 +118,7 @@ export function Settings({ hub, onClose }: { hub: Hub; onClose: () => void }) {
         </div>
       )}
       <AgentSettings hub={hub} keys={keys.has} onAddKey={setKeyFor} />
+      <GitHubSettings hub={hub} />
       <SyncSettings hub={hub} />
       <div>
         <div className="eyebrow" style={{ marginBottom: 8 }}>Updates</div>

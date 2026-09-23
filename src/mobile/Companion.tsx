@@ -6,6 +6,7 @@ import { ago } from '../core/util';
 import { Glyph, ImageSlot, Toast, asset, coverOf } from '../ui/common';
 import { ChatIntro, Composer, MessageView } from '../ui/Chat';
 import { launchProps, tileInfo } from '../ui/Library';
+import { RepoCard, RepoPicker } from '../ui/GitHub';
 
 const section = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 };
 
@@ -15,6 +16,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
   const scroller = useRef<HTMLDivElement>(null);
   const [chatEnd, setChatEnd] = useState<HTMLDivElement | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [fromGitHub, setFromGitHub] = useState(false);
 
   // Hardware back button returns to the games list.
   useEffect(() => {
@@ -77,6 +79,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
                 <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>Your library is empty. Pair this phone with your computer to see your games here, or start a new project.</div>
                 <button className="btn-accent" style={{ minHeight: 44 }} onClick={onSettings}>Pair with my computer</button>
                 <button className="btn" style={{ minHeight: 44 }} onClick={onNew}>New project</button>
+                <button className="btn" style={{ minHeight: 44 }} onClick={() => setFromGitHub(true)}>Open from GitHub</button>
               </div>
             )}
           </div>
@@ -147,6 +150,10 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
               </div>
               <Composer hub={hub} compact />
             </section>
+            <section>
+              <div style={section}>GitHub</div>
+              <RepoCard hub={hub} p={proj} compact />
+            </section>
             <section style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
               {confirmRemove === proj.id ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -163,6 +170,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
           </div>
         </div>
       )}
+      {fromGitHub && <RepoPicker title="Open from GitHub" hint="Pick a repo — the agents can read it from this phone." onPick={r => void hub.openFromGitHub(r)} onClose={() => setFromGitHub(false)} />}
       <Toast text={ui.toast} style={{ bottom: 'calc(24px + env(safe-area-inset-bottom))', left: 16, right: 16, transform: 'none', borderRadius: 12, fontSize: 12 }} />
     </div>
   );
