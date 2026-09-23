@@ -218,6 +218,8 @@ export interface Settings {
   device: { name: string; paired: boolean };
   tools: Record<string, boolean>;
   libraryDir?: string;
+  /** Tools you pointed at by hand, when they're installed somewhere nothing looks. */
+  toolPaths?: Record<string, string>;
 }
 
 export interface HubData {

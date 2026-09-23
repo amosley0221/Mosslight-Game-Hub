@@ -48,6 +48,13 @@ export async function pickFolder(): Promise<string | null> {
   return typeof r === 'string' ? r : null;
 }
 
+/** Pick a program (an engine editor, a tool) the hub should use. */
+export async function pickExecutable(name: string): Promise<string | null> {
+  if (!isTauri) return null;
+  const r = await openDialog({ multiple: false, title: `Find ${name}`, filters: isMac ? undefined : [{ name: 'Programs', extensions: ['exe', 'bat', 'cmd', 'app'] }] });
+  return typeof r === 'string' ? r : null;
+}
+
 export async function pickFiles(): Promise<string[]> {
   if (!isTauri) return [];
   const r = await openDialog({ multiple: true, title: 'Add files to the asset library' });

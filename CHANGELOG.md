@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.21.0] - 2026-09-23
+
+### Fixed
+- **Unreal installed on another drive was never found.** Detection only looked in `C:\Program Files\Epic Games\UE_5*`, so an engine the Epic launcher put on a second drive — `F:\Vacancy\Unreal\UE_5.8` — always read "Not installed". Mosslight now reads the launcher's own install records (`LauncherInstalled.dat`), so any engine it manages is found wherever it lives, newest first.
+
+### Added
+- **Locate… on every tool.** Point Mosslight at a program yourself when nothing finds it: a portable Blender (`F:\Vacancy\Tools\Blender\5.2.1\blender-launcher.exe`), a custom engine build, a tool on a drive nothing scans. The path is remembered per device and shown on the card.
 ## [0.20.0] - 2026-09-23
 
 ### Added

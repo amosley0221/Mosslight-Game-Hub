@@ -348,8 +348,48 @@ fn find_aapt() -> Option<PathBuf> {
     which_any(&["aapt"]).or_else(|| glob_first(&android_sdk()?.join("build-tools"), "", exe))
 }
 
+/// Where the Epic launcher records its engine installs — the only reliable answer when someone
+/// installs Unreal on another drive (`F:\Vacancy\Unreal\UE_5.8`), which is common for big projects.
+fn unreal_from_launcher() -> Option<PathBuf> {
+    let dat = if cfg!(windows) {
+        PathBuf::from("C:\\ProgramData\\Epic\\UnrealEngineLauncher\\LauncherInstalled.dat")
+    } else {
+        PathBuf::from("/Users/Shared/Epic Games/UnrealEngineLauncher/LauncherInstalled.dat")
+    };
+    let text = std::fs::read_to_string(dat).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let list = json.get("InstallationList")?.as_array()?;
+    let mut found: Vec<PathBuf> = Vec::new();
+    for item in list {
+        let name = item.get("AppName").and_then(|v| v.as_str()).unwrap_or("");
+        if !name.starts_with("UE_") {
+            continue;
+        }
+        let dir = item.get("InstallLocation").and_then(|v| v.as_str()).unwrap_or("");
+        if dir.is_empty() {
+            continue;
+        }
+        let editor = PathBuf::from(dir).join(if cfg!(windows) {
+            "Engine/Binaries/Win64/UnrealEditor.exe"
+        } else {
+            "Engine/Binaries/Mac/UnrealEditor"
+        });
+        if editor.exists() {
+            found.push(editor);
+        }
+    }
+    // Newest version last in the list order Epic writes; take the highest-sorting path.
+    found.sort();
+    found.pop()
+}
+
 fn find_tool(id: &str) -> Option<PathBuf> {
     let home = dirs::home_dir().unwrap_or_default();
+    if id == "unreal" {
+        if let Some(p) = unreal_from_launcher() {
+            return Some(p);
+        }
+    }
     if cfg!(windows) {
         let pf = PathBuf::from(std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into()));
         match id {

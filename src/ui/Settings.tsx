@@ -3,7 +3,7 @@ import { DEPTH, ORDER, TOOLS } from '../core/constants';
 import { AGENT_KEY } from '../core/agents';
 import type { Hub } from '../core/store';
 import type { AgentId } from '../core/types';
-import { detectTools, getSecret, isDesktop, openExternal, platform, setSecret, type ToolStatus } from '../platform';
+import { detectTools, getSecret, isDesktop, openExternal, pickExecutable, platform, setSecret, type ToolStatus } from '../platform';
 import { currentVersion, releasesUrl } from '../platform/updates';
 import { Modal, RichText, Switch, useUpdate } from './common';
 import { SyncSettings } from './SyncSettings';
@@ -45,11 +45,19 @@ export function Integrations({ hub }: { hub: Hub }) {
   const keyNames = TOOLS.filter(t => t.keyName).map(t => t.keyName!);
   const keys = useKeyStatus(keyNames);
   useEffect(() => { void detectTools().then(setDetected).catch(() => setDetected({})); }, []);
+  // A tool installed somewhere unusual (Unreal on another drive) can be pointed at by hand.
+  const locate = async (id: string, name: string) => {
+    const picked = await pickExecutable(name);
+    if (!picked) return;
+    updSettings(s => ({ ...s, toolPaths: { ...(s.toolPaths || {}), [id]: picked } }));
+    toast(`${name}: using ${picked}`);
+  };
   const rows = TOOLS.map(t => {
-    const installed = t.keyName ? !!keys.has[t.keyName] : !!detected[t.id]?.installed;
+    const manual = settings.toolPaths?.[t.id];
+    const installed = t.keyName ? !!keys.has[t.keyName] : !!manual || !!detected[t.id]?.installed;
     const connected = t.keyName ? installed : installed && settings.tools[t.id] !== false;
     const status = connected ? (t.keyName ? 'Key added' : 'Connected') : installed ? 'Detected · off' : t.depth === 'api' ? 'Needs API key' : isDesktop ? 'Not installed' : 'Desktop only';
-    return { t, installed, connected, status, path: detected[t.id]?.path };
+    return { t, installed, connected, status, path: manual || detected[t.id]?.path };
   });
   return (
     <>
@@ -73,9 +81,14 @@ export function Integrations({ hub }: { hub: Hub }) {
               <div className="mono ellipsis" title={path || t.how} style={{ fontSize: 10, color: 'var(--dim)' }}>{path || t.how}</div>
               <div className="row" style={{ justifyContent: 'space-between', marginTop: 'auto', paddingTop: 4 }}>
                 <span className="row" style={{ gap: 6, fontSize: 12, fontWeight: 600, color: connected ? 'var(--green)' : 'var(--muted)' }}><span className="dot" style={{ width: 7, height: 7, background: connected ? 'var(--green)' : 'var(--muted)' }} />{status}</span>
-                {t.keyName ? <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => setKeyFor(t)}>{connected ? 'Change key' : 'Add key'}</button>
-                  : installed ? <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => { updSettings(s => ({ ...s, tools: { ...s.tools, [t.id]: !connected } })); toast((connected ? 'Disconnected ' : 'Connected ') + t.name); }}>{connected ? 'Disconnect' : 'Connect'}</button>
-                  : null}
+                <span className="row" style={{ gap: 6 }}>
+                  {!t.keyName && isDesktop && (
+                    <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12, borderRadius: 8 }} title={installed ? 'Point at a different install' : `Find ${t.name} yourself — useful when it's on another drive`} onClick={() => void locate(t.id, t.name)}>Locate…</button>
+                  )}
+                  {t.keyName ? <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => setKeyFor(t)}>{connected ? 'Change key' : 'Add key'}</button>
+                    : installed ? <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => { updSettings(s => ({ ...s, tools: { ...s.tools, [t.id]: !connected } })); toast((connected ? 'Disconnected ' : 'Connected ') + t.name); }}>{connected ? 'Disconnect' : 'Connect'}</button>
+                    : null}
+                </span>
               </div>
             </section>
           );
