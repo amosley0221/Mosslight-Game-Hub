@@ -3,6 +3,21 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.8.0] - 2026-09-23
+
+### Added
+- **Story tab — the game's bible, not a file browser.**
+  - **The story** at the top: write it, paste it, or have Grok draft it.
+  - **Sections you make yourself**: Characters, Maps, Locations, Vehicles, Factions, or any name you type.
+  - **Each entry is its own page**: a character or a map with its own pictures, a main picture, and notes. Click a card to open it.
+  - **Pictures come from your project folder** through a picker with search and folder filters, or from any file. They're copied to your other devices automatically, so characters and maps show on the phone.
+  - **Documents** (your play guide PDF and other docs) now live at the bottom of the Story tab.
+- **Art: choose which folders to show.** A project with thousands of images across dozens of engine-capture folders is now something you can narrow: **Choose folders** lists every folder with its image count, and only what you tick shows up. Grok's art and anything shared always shows.
+
+### Changed
+- The Overview card now previews the story and its sections, and links to the Story tab.
+- The Guides tab is gone; documents moved into Story, so everything about the game's fiction is in one place.
+
 ## [0.7.0] - 2026-09-23
 
 ### Added

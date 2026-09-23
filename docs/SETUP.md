@@ -241,7 +241,7 @@ In Auto or Local mode on the computer, Claude Code and Codex run **inside the pr
 Each project has tabs for the things around the game, not just the code.
 
 ### Art
-The **Art** tab shows every image in the project folder, grouped by the folder it lives in. With a layout like:
+The **Art** tab shows images from the project folder, grouped by the folder they live in. A real game project has thousands of images across engine-capture folders, so use **Choose folders** to tick only the ones worth browsing — concepts, characters, key art. With a layout like:
 
 ```
 F:\Vacancy\Art\Characters
@@ -258,15 +258,20 @@ The **Music** tab is the game's soundtrack. Audio in the project folder is picke
 
 **The agents can see your tracks.** Their names and file paths go into every agent's context, so you can say *"use Roadside Theme for the main menu"* and local Claude Code or Codex can wire that exact file into the game.
 
-### Guides
-The **Guides** tab holds play guides and design PDFs. PDFs in the project folder appear automatically; **Add a document** takes one from anywhere. They open inside Mosslight.
+### Story
+The **Story** tab is the game's bible:
+
+- **The story** — write it, paste it, or let Grok draft it.
+- **Sections** you create: Characters, Maps, Locations, Vehicles, or your own.
+- **Entries** inside each section — one per character or map — each with its own pictures, a main picture and notes. Pictures come from the project folder (searchable picker) or any file, and are copied to your other devices so they show on the phone.
+- **Documents** at the bottom: your play guide and other PDFs, readable inside Mosslight.
 
 ### Seeing all of it on your phone
 Art, music and guides live on the computer that holds the project folder. To see them on the phone, share them:
 
 - **Art**: open a group and click **Share N images with my devices** (they're downscaled first).
 - **Music**: **Share to my devices** on a track.
-- **Guides**: **Share to my devices** on a document.
+- **Guides**: **Share to my devices** on a document. (Story pictures are shared automatically.)
 
 Shared items go into your private sync repo and then show, play and open on every paired device.
 
