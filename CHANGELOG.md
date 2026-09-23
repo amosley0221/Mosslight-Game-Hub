@@ -3,6 +3,28 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.6.0] - 2026-09-23
+
+### Fixed
+- **Clicking a project tile opened a file picker instead of the project.** Tiles now open the project. To change the cover, open the project and use **Change cover** (or drop an image on the cover).
+- **Cover art overflowed its tile.** Images are now cropped to fit the cover area everywhere.
+
+### Added
+- **Handoffs now carry a ready-to-run prompt.** When one agent suggests another takes over — for example Codex finishing a layout and handing the coding to Claude — it writes a complete prompt for that agent: the files involved, structure, exact values and acceptance criteria.
+  - The card shows the prompt. You can read it, **Edit prompt**, then **Approve & run**, and the other agent starts on it immediately.
+  - **⚙ Settings → Agents → Auto-approve handoffs** runs them without waiting for you.
+- **Live progress while an agent works**, like a terminal:
+  - Replies stream in as they're written.
+  - Local Claude Code and Codex show each step as it happens ("Reading Player.cs", "Running npm run build", "Edited 3 files"), with a running timer.
+  - **Stop** cancels a run (and anything it started). Finished replies keep a collapsible step list.
+- **Agents work at the same time.** Each agent has its own queue, so you can ask Grok for art while Claude is still coding. Extra messages for a busy agent queue up and say so.
+- **Team mode**: pick **Team** next to the composer and describe a bigger feature. A lead agent (Codex by default, in Settings) splits it into steps for each agent, showing each step's prompt. Approve once with **Run plan**, and steps run in parallel where they're independent, or in order where one needs another's output — each result passed along.
+- **⚙ Settings → Agents → Let Claude Code run commands**: lets local Claude Code run builds and tests as well as editing files.
+
+### Changed
+- Local Claude Code and Codex now work directly in the project folder (editing files), instead of only replying with code.
+- Runs interrupted by closing Mosslight are marked instead of staying stuck on "typing".
+
 ## [0.5.0] - 2026-09-23
 
 ### Added

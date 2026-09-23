@@ -195,3 +195,41 @@ In **New project**, leave **"Create a private GitHub repo"** ticked.
   - the contents of any file you mention by name, for example *"why does PlayerController.cs jitter?"*
 
   To have an agent look at a file, mention it.
+
+---
+
+## 4. How the chat works
+
+### One message, one agent
+Each message goes to a single agent. Mosslight picks by keywords, or you pick with the pills above the box (**Auto / Team / Grok / Codex / Claude**). If it can't tell, it asks you.
+
+Agents work **in parallel**: while Claude is coding, you can ask Grok for art. A second message to a *busy* agent waits in that agent's queue and says so.
+
+### Live progress
+While an agent works you see:
+- its reply streaming in;
+- what a local tool is doing, step by step ("Reading Player.cs", "Running npm run build");
+- a timer, and a **Stop** button.
+
+After it finishes, the step list stays available (collapsed) under the reply.
+
+### Handoffs: the Codex → Claude workflow
+This is the workflow of asking Codex for design, then having it write the prompt for Claude Code:
+
+1. Ask **Codex** for a layout or design.
+2. Codex answers, and when the work needs code it adds a handoff card: *"Codex suggests Claude takes this"*, with a **ready-to-run prompt** for Claude — files, structure, exact values, acceptance criteria.
+3. Read the prompt, optionally **Edit prompt**, then click **Approve & run**. Claude starts immediately, with live progress.
+
+To skip the approval step, turn on **⚙ Settings → Agents → Auto-approve handoffs**.
+
+It works in every direction: Claude hands visual work to Codex, Grok hands a concept to Codex to turn into a style guide, and so on.
+
+### Team mode (bigger requests)
+Choose the **Team** pill and describe something larger, for example *"add a fishing minigame with UI"*.
+
+1. The **team lead** (Codex by default; change it in Settings) splits it into steps, one per agent, each with a full prompt.
+2. You see the plan. Tap a step to read or edit its prompt, or drop a step.
+3. **Run plan**: independent steps run at the same time, dependent ones wait for what they need, and each result is passed to the next agent.
+
+### What local agents can do
+In Auto or Local mode on the computer, Claude Code and Codex run **inside the project folder** and can edit files. Claude Code can also run builds and tests if you turn on **Let Claude Code run commands** in Settings. With auto backup on, changes are committed and pushed to GitHub afterwards.
