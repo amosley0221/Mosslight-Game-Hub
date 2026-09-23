@@ -5,8 +5,9 @@ import type { Hub } from '../core/store';
 import { ago } from '../core/util';
 import { Glyph, ImageSlot, Toast, asset, coverOf } from '../ui/common';
 import { ChatIntro, Composer, MessageView } from '../ui/Chat';
-import { launchProps, tileInfo } from '../ui/Library';
+import { AddMenu, launchProps, tileInfo } from '../ui/Library';
 import { RepoCard, RepoPicker } from '../ui/GitHub';
+import { ArtTab, GuidesTab } from '../ui/Media';
 
 const section = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 };
 
@@ -41,7 +42,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{data.projects.length} projects · {builds} test builds ready</div>
             </div>
             <div className="row">
-            <button onClick={onNew} aria-label="New project" style={{ background: 'var(--accent)', border: 0, borderRadius: 999, width: 40, height: 40, fontSize: 20, color: 'var(--on-accent)' }}>+</button>
+            <AddMenu compact onNew={onNew} onGitHub={() => setFromGitHub(true)} />
             <button onClick={onSettings} aria-label="Settings" style={{ background: 'var(--panel)', border: '1px solid var(--line-2)', borderRadius: 999, width: 40, height: 40, fontSize: 16, color: 'var(--text-2)' }}>⚙</button>
             </div>
           </div>
@@ -51,7 +52,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
               return (
                 <div key={p.id} className="card rise" style={{ borderRadius: 16, overflow: 'hidden' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '96px minmax(0,1fr)', gap: 12 }}>
-                    <div style={{ position: 'relative', aspectRatio: '1', background: 'var(--well)' }}><ImageSlot compact src={coverOf(p)} placeholder="Cover" onOpen={() => patchUi({ view: 'project', pid: p.id })} /></div>
+                    <div style={{ position: 'relative', width: 96, height: 96, alignSelf: 'start', background: 'var(--well)' }}><ImageSlot compact src={coverOf(p)} placeholder="Cover" onOpen={() => patchUi({ view: 'project', pid: p.id })} /></div>
                     <button onClick={() => patchUi({ view: 'project', pid: p.id })} style={{ padding: '12px 12px 12px 0', display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, textAlign: 'left', background: 'none', border: 0 }}>
                       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}><span style={{ fontWeight: 600, fontSize: 15 }}>{p.name}</span><span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{t.done}/{t.total}</span></div>
                       <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{p.tagline}</span>
@@ -133,14 +134,20 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
                 ))}
               </div>
             </section>
-            {proj.art.length > 0 && (
+            {proj.summary && (
               <section>
-                <div style={section}>Concept art</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 8 }}>
-                  {proj.art.slice(0, 4).map(a => <div key={a.id} style={{ position: 'relative', aspectRatio: '4/3', borderRadius: 10, overflow: 'hidden', background: 'var(--well)' }}><ImageSlot compact src={a.imagePath} placeholder={a.title} /></div>)}
-                </div>
+                <div style={section}>Story</div>
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{proj.summary}</p>
               </section>
             )}
+            <section>
+              <div style={section}>Art</div>
+              <ArtTab hub={hub} p={proj} />
+            </section>
+            <section>
+              <div style={section}>Guides</div>
+              <GuidesTab hub={hub} p={proj} />
+            </section>
             <section>
               <div style={section}>Chat</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>

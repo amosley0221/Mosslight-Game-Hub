@@ -43,6 +43,84 @@ fn scan_folder(path: String) -> Result<ScanResult, String> {
     Ok(ScanResult { name, path, entries, package_json })
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FoundFile {
+    path: String,
+    name: String,
+    /// Folder holding the file, relative to the scan root ("" = the root itself).
+    folder: String,
+    size: u64,
+    modified: u64,
+}
+
+/// Build output, caches and dependencies — never worth scanning for art or docs.
+const SKIP_DIRS: &[&str] = &[
+    "node_modules", ".git", ".svn", "binaries", "intermediate", "saved", "deriveddatacache",
+    "library", "temp", "obj", "build", "builds", ".godot", ".import", "target", "dist",
+    ".vs", ".idea", "logs", "packages", "__pycache__", ".gradle", "venv",
+];
+
+/// Finds files with the given extensions anywhere under `root` (skipping build/cache folders).
+#[tauri::command]
+async fn find_files(root: String, exts: Vec<String>, max: usize) -> Result<Vec<FoundFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = PathBuf::from(&root);
+        if !root_path.is_dir() {
+            return Err(format!("{root} isn't a folder on this computer"));
+        }
+        let mut out: Vec<FoundFile> = Vec::new();
+        let mut queue = std::collections::VecDeque::from([(root_path.clone(), 0usize)]);
+        while let Some((dir, depth)) = queue.pop_front() {
+            if out.len() >= max || depth > 6 {
+                continue;
+            }
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                if is_dir {
+                    if !SKIP_DIRS.contains(&name.to_lowercase().as_str()) {
+                        queue.push_back((e.path(), depth + 1));
+                    }
+                    continue;
+                }
+                let p = e.path();
+                let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+                if !exts.iter().any(|x| x.eq_ignore_ascii_case(&ext)) {
+                    continue;
+                }
+                let md = e.metadata().ok();
+                let folder = dir
+                    .strip_prefix(&root_path)
+                    .map(|x| x.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_default();
+                out.push(FoundFile {
+                    path: p.to_string_lossy().to_string(),
+                    name,
+                    folder,
+                    size: md.as_ref().map(|m| m.len()).unwrap_or(0),
+                    modified: md
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0),
+                });
+                if out.len() >= max {
+                    break;
+                }
+            }
+        }
+        out.sort_by(|a, b| a.folder.cmp(&b.folder).then_with(|| a.name.cmp(&b.name)));
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Writes the raw request body to the absolute path in the `x-path` header (URL-encoded).
 #[tauri::command]
 fn save_bytes(request: tauri::ipc::Request<'_>) -> Result<String, String> {
@@ -484,6 +562,7 @@ pub fn run_app() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             scan_folder,
+            find_files,
             save_bytes,
             read_file_bytes,
             copy_file,

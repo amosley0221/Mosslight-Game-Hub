@@ -38,8 +38,40 @@ export interface Project {
   dismissed?: string[];
   /** Linked GitHub repository (backups + context for agents). */
   repo?: RepoLink;
+  /** Longer story/summary of the game, shown on Overview. */
+  summary?: string;
+  /** Build shown next to the title (defaults to the newest). */
+  featuredBuild?: string;
+  /** Design docs, play guides, PDFs. */
+  docs?: ProjectDoc[];
+  /** Art copied into sync so every device (phone included) can see it. */
+  sharedArt?: SharedArt[];
   /** Last-modified time, used to merge edits from other devices. */
   u?: number;
+}
+
+export interface SharedArt {
+  id: string;
+  name: string;
+  group: string;
+  /** img: reference in the sync store. */
+  ref: string;
+  /** Absolute path on the device that shared it, when it came from a folder. */
+  from?: string;
+  ts: number;
+}
+
+export interface ProjectDoc {
+  id: string;
+  name: string;
+  /** Absolute path on `device`, or a synced img:/https: reference. */
+  path: string;
+  device?: string;
+  kind: 'pdf' | 'image' | 'text' | 'other';
+  /** img: reference once shared to the other devices. */
+  ref?: string;
+  size?: number;
+  ts: number;
 }
 
 export interface RepoLink {

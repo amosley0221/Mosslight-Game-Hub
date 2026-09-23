@@ -3,16 +3,16 @@ import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from '.
 import { planTeam, respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
-import type { AgentId, AgentMode, Asset, Build, HubData, Message, PlanStep, Platform, Project, Settings, Usage } from './types';
+import type { AgentId, AgentMode, Asset, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, Usage } from './types';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
   cancelAgentRun, copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
-  pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, type ScanResult,
+  pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, fileSrc, type ScanResult,
 } from '../platform';
 import { OS_LABEL, deviceId, deviceOs, localFolder } from '../sync/device';
 import { SyncEngine, loadSyncConfig, saveSyncConfig, type SyncConfig, type SyncState } from '../sync/engine';
 import { merge, toDoc } from '../sync/merge';
-import { setImageStore, uploadImage } from '../sync/images';
+import { setImageStore, uploadFile, uploadImage } from '../sync/images';
 import { installOrLaunch, uploadApk } from '../sync/apk';
 import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
 import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
@@ -426,6 +426,7 @@ export function useHub() {
   const backingUp = useRef(new Set<string>());
   const backupRef = useRef<(pid: string, reason?: string, silent?: boolean) => Promise<void>>();
   const [busyRepo, setBusyRepo] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<{ done: number; total: number } | null>(null);
   const myDeviceName = () => dataRef.current.devices?.[deviceId]?.name || OS_LABEL[deviceOs];
 
   /** Commit + push the project's local folder. `silent` = no toast when there's nothing to back up. */
@@ -725,6 +726,75 @@ export function useHub() {
     updProj(pid, p => ({ ...p, coverImage: path, coverArt: undefined }));
   }, [storeImage, updProj]);
 
+  /** Use an image that already exists (project folder or generated art) as the cover. */
+  const setCoverFrom = useCallback(async (pid: string, src: string) => {
+    updProj(pid, p => ({ ...p, coverImage: src, coverArt: undefined }));
+    toast('Cover updated');
+    // With sync on, share a local file so the other devices show the same cover.
+    if (engineRef.current && isDesktop && !src.startsWith('img:') && !isUrl(src)) {
+      try {
+        const blob = await (await fetch(fileSrc(src)!)).blob();
+        const { bytes } = await resizeImage(blob, 1400);
+        const ref = await uploadImage(bytes);
+        if (ref) updProj(pid, p => (p.coverImage === src ? { ...p, coverImage: ref } : p));
+      } catch { /* keep the local path */ }
+    }
+  }, [updProj, toast]);
+
+  const clearCover = useCallback((pid: string) => updProj(pid, p => ({ ...p, coverImage: undefined, coverArt: undefined })), [updProj]);
+
+  /**
+   * Copies local art into sync (downscaled) so the phone and other computers can see it.
+   * Skips anything already shared.
+   */
+  const shareArt = useCallback(async (pid: string, items: { src: string; name: string; group: string }[]) => {
+    if (!engineRef.current) return toast('Turn on sync in Settings first — that\'s how your phone sees this art');
+    const have = new Set((dataRef.current.projects.find(p => p.id === pid)?.sharedArt || []).map(a => a.from || a.name));
+    const todo = items.filter(i => !have.has(i.src) && !i.src.startsWith('img:')).slice(0, 400);
+    if (!todo.length) return toast('Already shared with your devices');
+    setSharing({ done: 0, total: todo.length });
+    let failed = 0;
+    for (let i = 0; i < todo.length; i++) {
+      const it = todo[i];
+      try {
+        const blob = await (await fetch(fileSrc(it.src)!)).blob();
+        const { bytes } = await resizeImage(blob, 1600);
+        const ref = await uploadImage(bytes);
+        if (ref) updProj(pid, p => ({ ...p, sharedArt: [...(p.sharedArt || []), { id: uid(), name: it.name, group: it.group, ref, from: it.src, ts: now() }] }));
+      } catch { failed++; }
+      setSharing({ done: i + 1, total: todo.length });
+    }
+    setSharing(null);
+    toast(`Shared ${todo.length - failed} image${todo.length - failed === 1 ? '' : 's'} with your devices${failed ? ` · ${failed} couldn't be read` : ''}`);
+  }, [updProj, toast]);
+
+  const unshareArt = useCallback((pid: string, group?: string) => {
+    updProj(pid, p => ({ ...p, sharedArt: (p.sharedArt || []).filter(a => (group ? a.group !== group : false)) }));
+    toast(group ? `${group} is no longer shared` : 'Shared art removed');
+  }, [updProj, toast]);
+
+  /** Copies a PDF/doc into sync so it opens on the phone too. */
+  const shareDoc = useCallback(async (pid: string, doc: ProjectDoc) => {
+    if (!engineRef.current) return toast('Turn on sync in Settings first');
+    setSharing({ done: 0, total: 1 });
+    try {
+      const bytes = await readFileBytes(doc.path, 80 * 1024 * 1024);
+      const ref = await uploadFile(bytes, (doc.path.split('.').pop() || 'pdf').toLowerCase());
+      if (!ref) throw new Error('Upload failed');
+      updProj(pid, p => {
+        const docs = p.docs || [];
+        return { ...p, docs: docs.some(d => d.id === doc.id) ? docs.map(d => (d.id === doc.id ? { ...d, ref } : d)) : [{ ...doc, ref }, ...docs] };
+      });
+      toast(`${doc.name} is now readable on your other devices`);
+    } catch (e) {
+      toast(`Couldn't share ${doc.name}: ${(e as Error)?.message || e}`);
+    } finally {
+      setSharing(null);
+    }
+  }, [updProj, toast]);
+  const setFeaturedBuild = useCallback((pid: string, bid: string | undefined) => updProj(pid, p => ({ ...p, featuredBuild: p.featuredBuild === bid ? undefined : bid })), [updProj]);
+  const setSummary = useCallback((pid: string, summary: string) => updProj(pid, p => ({ ...p, summary })), [updProj]);
+
   const setArtImage = useCallback(async (pid: string, aid: string, file: File) => {
     const path = await storeImage(file, 'art_' + aid);
     updProj(pid, p => ({ ...p, art: p.art.map(a => (a.id === aid ? { ...a, imagePath: path } : a)) }));
@@ -866,7 +936,8 @@ export function useHub() {
     patchUi, toast, updProj, updSettings, setData,
     send, ask, dispatch, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
-    launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage,
+    launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
+    shareArt, unshareArt, shareDoc, sharing,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
     busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,

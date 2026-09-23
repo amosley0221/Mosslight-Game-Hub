@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AGENTS, ENGINES, ORDER, PLAT_LABEL, TAGS, engineName } from '../core/constants';
 import { totalUsage, type Hub } from '../core/store';
 import type { Build, Project } from '../core/types';
 import { pct } from '../core/util';
 import { isDesktop } from '../platform';
-import { Dot, ImageSlot, Modal, asset, coverOf } from './common';
+import { Dot, Modal, asset, coverOf } from './common';
+import { useImageSrc } from '../sync/images';
 import { RepoPicker, useGitHubAccount } from './GitHub';
 
 export function Header({ hub, onSettings }: { hub: Hub; onSettings: () => void }) {
@@ -60,6 +61,74 @@ export function tileInfo(p: Project) {
   };
 }
 
+/** Round + button that opens the three ways to add a project. */
+export function AddMenu({ onNew, onGitHub, onFolder, compact }: { onNew: () => void; onGitHub: () => void; onFolder?: () => void; compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [open]);
+  const pick = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); setOpen(false); fn(); };
+  return (
+    <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+      <button className="fab" style={compact ? { width: 40, height: 40, fontSize: 20 } : undefined} title="Add a project" aria-label="Add a project" onClick={() => setOpen(!open)}>+</button>
+      {open && (
+        <div className="menu">
+          <div className="menu-note">Add a project</div>
+          <button onClick={pick(onNew)}>New project</button>
+          <button onClick={pick(onGitHub)}>Open from GitHub</button>
+          {onFolder && <button onClick={pick(onFolder)}>Open local folder</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Library tile: the game's art fills it; details rise over the art on hover. */
+function Tile({ hub, p }: { hub: Hub; p: Project }) {
+  const t = tileInfo(p);
+  const cover = useImageSrc(coverOf(p));
+  const open = () => hub.patchUi({ view: 'project', pid: p.id, tab: 'overview' });
+  const featured = p.builds.find(b => b.id === p.featuredBuild) || p.builds[0];
+  return (
+    <div
+      className="tile rise"
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f?.type.startsWith('image/')) void hub.setCoverImage(p.id, f); }}
+    >
+      {cover
+        ? <img className="tile-art" src={cover} alt={p.name} draggable={false} />
+        : <div className="tile-empty">Drop cover art here<br /><span style={{ fontSize: 11 }}>or add one inside the project</span></div>}
+      <button className="tile-open" onClick={open} aria-label={`Open ${p.name}`} />
+      <div className="tile-shade" />
+      <div className="tile-chips">
+        {p.engines.map(e => <span key={e} className="mono" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)' }}>{engineName(e)}</span>)}
+        {p.platforms.map(e => <span key={e} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)', opacity: .85 }}>{PLAT_LABEL[e]}</span>)}
+        {p.folder && <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--accent)' }}>local</span>}
+      </div>
+      <div className="tile-info">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontWeight: 600, fontSize: 17, textShadow: '0 1px 3px rgba(0,0,0,.6)' }}>{p.name}</span>
+          <span className="mono" style={{ fontSize: 11, opacity: .8 }}>{t.done}/{t.total}</span>
+        </div>
+        <div className="bar" style={{ height: 4, width: '100%', background: 'rgba(255,255,255,.22)' }}><div style={{ height: '100%', width: t.progressPct, background: 'var(--green)' }} /></div>
+        <div className="tile-extra">
+          <span style={{ fontSize: 12, lineHeight: 1.45, opacity: .85, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.summary?.trim() || p.tagline}</span>
+          {t.next && <span className="row ellipsis" style={{ fontSize: 11, opacity: .85 }}><Dot color={AGENTS[t.next.agent].color} />{t.nextLabel}</span>}
+          {featured && (
+            <div className="row wrap" style={{ gap: 6 }}>
+              <BuildButton b={featured} hub={hub} p={p} />
+              {p.builds.length > 1 && <button onClick={open} className="build-btn" style={{ pointerEvents: 'auto' }}>+{p.builds.length - 1} more</button>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => void; onSettings: () => void }) {
   const { data } = hub;
   const [fromGitHub, setFromGitHub] = useState(false);
@@ -74,11 +143,7 @@ export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => voi
           <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', margin: '6px 0 0 6px' }}>Game Hub</div>
           <p className="sub">{data.projects.length} projects · {builds} test builds ready</p>
         </div>
-        <div className="row wrap">
-          <button className="btn" onClick={openGitHub}>Open from GitHub</button>
-          {isDesktop && <button className="btn" onClick={() => void hub.openFolder()}>Open local folder</button>}
-          <button className="btn-accent" onClick={onNew}>New project</button>
-        </div>
+        <AddMenu onNew={onNew} onGitHub={openGitHub} onFolder={isDesktop ? () => void hub.openFolder() : undefined} />
       </div>
       {data.projects.length === 0 && (
         <section className="card rise" style={{ padding: 22, marginBottom: 22, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 760 }}>
@@ -96,41 +161,8 @@ export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => voi
         </section>
       )}
       {fromGitHub && <RepoPicker title="Open a project from GitHub" hint={isDesktop ? "Pick a repo — it's cloned into a folder you choose, and backups push back to it." : 'Pick a repo — the agents can read it from this phone.'} onPick={r => void hub.openFromGitHub(r)} onClose={() => setFromGitHub(false)} />}
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-        {data.projects.map(p => {
-          const t = tileInfo(p);
-          return (
-            <div key={p.id} className="card hover-line rise" style={{ borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ position: 'relative', aspectRatio: '16/10', background: 'var(--well)' }}>
-                <ImageSlot src={coverOf(p)} placeholder="No cover yet" onFile={f => void hub.setCoverImage(p.id, f)} onOpen={() => hub.patchUi({ view: 'project', pid: p.id, tab: 'overview' })} />
-                <div className="row wrap" style={{ position: 'absolute', top: 10, left: 10, right: 60, gap: 6, pointerEvents: 'none' }}>
-                  {p.engines.map(e => <span key={e} className="mono" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)' }}>{engineName(e)}</span>)}
-                  {p.platforms.map(e => <span key={e} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)', opacity: .85 }}>{PLAT_LABEL[e]}</span>)}
-                </div>
-                {p.folder && <span className="mono" style={{ position: 'absolute', top: 10, right: 10, fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--accent)', pointerEvents: 'none' }}>local</span>}
-              </div>
-              <button className="tile-body" onClick={() => hub.patchUi({ view: 'project', pid: p.id, tab: 'overview' })}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', width: '100%', gap: 10 }}>
-                  <span style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{t.done}/{t.total}</span>
-                </div>
-                <span style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4 }}>{p.tagline}</span>
-                <span className="mono ellipsis" style={{ fontSize: 10, color: 'var(--dim)', maxWidth: '100%' }}>{t.stackLine}</span>
-                <div className="bar" style={{ height: 4, width: '100%' }}><div style={{ height: '100%', width: t.progressPct, background: 'var(--green)' }} /></div>
-                <div className="row" style={{ fontSize: 12, color: 'var(--text-2)', width: '100%', minWidth: 0 }}>
-                  <Dot color={t.next ? AGENTS[t.next.agent].color : 'var(--dim)'} />
-                  <span className="ellipsis">{t.nextLabel}</span>
-                </div>
-              </button>
-              {p.builds.length > 0 && (
-                <div className="row wrap" style={{ gap: 6, padding: '0 16px 14px' }}>
-                  {p.builds.slice(0, 2).map(b => <BuildButton key={b.id} b={b} hub={hub} p={p} />)}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <button onClick={onNew} style={{ minHeight: 260, border: '1px dashed var(--line-3)', borderRadius: 16, background: 'transparent', color: 'var(--muted)', fontSize: 14, fontWeight: 600 }}>+ New project</button>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+        {data.projects.map(p => <Tile key={p.id} hub={hub} p={p} />)}
       </div>
     </>
   );

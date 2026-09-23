@@ -138,3 +138,7 @@ export function runAgentCliStream(program: 'claude' | 'codex', args: string[], s
   return invoke<StreamResult>('run_agent_cli_stream', { program, args, stdin, cwd: cwd || null, runId, onLine: ch });
 }
 export const cancelAgentRun = (runId: string) => (isTauri ? invoke<boolean>('cancel_agent_run', { runId }) : Promise.resolve(false));
+
+// ── Finding art and documents in a project folder (desktop) ───────────────────
+export interface FoundFile { path: string; name: string; folder: string; size: number; modified: number }
+export const findFiles = (root: string, exts: string[], max = 3000) => (isTauri ? invoke<FoundFile[]>('find_files', { root, exts, max }) : Promise.resolve([] as FoundFile[]));

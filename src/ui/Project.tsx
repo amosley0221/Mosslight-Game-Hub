@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENTS, ASSET_KINDS, ORDER, PLATFORMS, PLAT_LABEL, TOOLS, WEB_ENGINES, engineName } from '../core/constants';
 import { totalUsage, type Hub } from '../core/store';
 import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
 import { copyText, isDesktop, openExternal } from '../platform';
 import { RepoCard } from './GitHub';
-import { Dot, Glyph, ImageSlot, coverOf } from './common';
+import { ArtTab, GuidesTab, useProjectImages } from './Media';
+import { Dot, Glyph, coverOf } from './common';
+import { useImageSrc } from '../sync/images';
 import { TagPicks, launchProps, recommend, tileInfo } from './Library';
 
 const ACTIONS: Record<AgentId, string> = { grok: 'var(--ag-grok)', codex: 'var(--ag-codex)', claude: 'var(--ag-claude)' };
@@ -23,28 +25,99 @@ function TabIntro({ text, children }: { text: string; children?: ReactNode }) {
   );
 }
 
+/** Project cover: shows the whole image, with a pencil that appears on hover. */
+function Cover({ hub, p }: { hub: Hub; p: P }) {
+  const [menu, setMenu] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const src = useImageSrc(coverOf(p));
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menu]);
+  return (
+    <div className="cover-wrap" onClick={e => e.stopPropagation()}
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f?.type.startsWith('image/')) void hub.setCoverImage(p.id, f); }}>
+      <div style={{ borderRadius: 14, overflow: 'hidden', background: 'var(--well)', border: '1px solid var(--line)', display: 'grid', placeItems: 'center', minHeight: 120 }}>
+        {src
+          ? <img src={src} alt={`${p.name} cover`} style={{ width: '100%', height: 'auto', maxHeight: 380, objectFit: 'contain', display: 'block' }} />
+          : <button onClick={() => input.current?.click()} style={{ background: 'none', border: 0, color: 'var(--muted)', fontSize: 12, padding: '46px 12px', width: '100%' }}>Add cover art<br /><span style={{ fontSize: 11 }}>click or drop an image</span></button>}
+      </div>
+      {src && <button className="cover-edit" title="Change cover art" onClick={() => setMenu(!menu)}>✎</button>}
+      {menu && (
+        <div className="menu" style={{ right: 8, top: 44 }}>
+          <button onClick={() => { setMenu(false); input.current?.click(); }}>Change cover…</button>
+          <button onClick={() => { setMenu(false); hub.patchUi({ tab: 'art' }); }}>Pick from Art</button>
+          <button onClick={() => { setMenu(false); hub.clearCover(p.id); }}>Remove cover</button>
+        </div>
+      )}
+      <input ref={input} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void hub.setCoverImage(p.id, f); e.target.value = ''; }} />
+    </div>
+  );
+}
+
+function PreviewImg({ src, alt }: { src: string; alt: string }) {
+  const url = useImageSrc(src);
+  return <div style={{ position: 'relative', aspectRatio: '4/3', borderRadius: 10, overflow: 'hidden', background: 'var(--well)' }}>{url && <img src={url} alt={alt} loading="lazy" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}</div>;
+}
+
+/** A few images from the project's art, with the group names as a summary. */
+function ArtPreview({ hub, p }: { hub: Hub; p: P }) {
+  const { items, groups } = useProjectImages(p);
+  return (
+    <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
+      <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
+        <h3 className="eyebrow">Art{items.length ? ` · ${items.length} image${items.length === 1 ? '' : 's'}` : ''}</h3>
+        <button className="link" onClick={() => hub.patchUi({ tab: 'art' })}>See all →</button>
+      </div>
+      {groups.length > 0 && (
+        <div className="row wrap" style={{ gap: 6, marginBottom: 12 }}>
+          {groups.slice(0, 8).map(([g, n]) => <button key={g} className="chip" style={{ background: 'var(--well)', color: 'var(--text-2)' }} onClick={() => hub.patchUi({ tab: 'art' })}>{g} <span className="mono" style={{ fontSize: 10, opacity: .6 }}>{n}</span></button>)}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+        {items.slice(0, 6).map(a => <PreviewImg key={a.id} src={a.src} alt={a.name} />)}
+      </div>
+      {!items.length && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>No art yet — art in the project folder shows here, or ask Grok for concepts.</p>}
+    </section>
+  );
+}
+
+/** The game's story, editable and draftable by Grok. */
+function Story({ hub, p }: { hub: Hub; p: P }) {
+  const [draft, setDraft] = useState(p.summary || '');
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { if (!editing) setDraft(p.summary || ''); }, [p.summary, editing]);
+  return (
+    <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+        <h3 className="eyebrow">Story</h3>
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn-ghost" onClick={() => { if (editing) hub.setSummary(p.id, draft); setEditing(!editing); }}>{editing ? 'Save' : p.summary ? 'Edit' : 'Write'}</button>
+          <button className="btn-ghost" onClick={() => hub.ask(`Write the story summary for ${p.name} — what the game is about, the setting, the player's role and the hook. 150–200 words, plain prose.`, 'grok')}>Draft with Grok</button>
+        </div>
+      </div>
+      {editing
+        ? <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)} rows={8} placeholder="What is this game about?" style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.6, resize: 'vertical', color: 'var(--text-2)' }} />
+        : <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: p.summary ? 'var(--text-2)' : 'var(--muted)', whiteSpace: 'pre-wrap', maxWidth: '80ch' }}>{p.summary || 'No story yet. Write one, or ask Grok to draft it from what the project already knows.'}</p>}
+    </section>
+  );
+}
+
 export function Project({ hub, p }: { hub: Hub; p: P }) {
   const { ui, settings, patchUi } = hub;
   const [confirmRemove, setConfirmRemove] = useState(false);
   const t = tileInfo(p);
-  const tabs: [string, string][] = [['overview', 'Overview'], ['tasks', 'Tasks'], ['builds', 'Test builds'], ['art', 'Concept art'], ['gdd', 'GDD'], ['engines', 'Stack'], ...(settings.devMode ? [['dev', 'Dev'] as [string, string]] : []), ['activity', 'Activity'], ['usage', 'Usage']];
+  const featured = p.builds.find(b => b.id === p.featuredBuild) || p.builds[0];
+  const tabs: [string, string][] = [['overview', 'Overview'], ['tasks', 'Tasks'], ['builds', 'Test builds'], ['art', 'Art'], ['guides', 'Guides'], ['gdd', 'GDD'], ['engines', 'Stack'], ...(settings.devMode ? [['dev', 'Dev'] as [string, string]] : []), ['activity', 'Activity'], ['usage', 'Usage']];
   const tab = tabs.some(x => x[0] === ui.tab) ? ui.tab : 'overview';
 
   return (
     <>
       <div className="project-head" style={{ display: 'grid', gridTemplateColumns: '200px minmax(0,1fr)', gap: 22, alignItems: 'start', marginBottom: 22 }}>
-        <div>
-          <div style={{ position: 'relative', aspectRatio: '16/10', borderRadius: 14, overflow: 'hidden', background: 'var(--well)' }}>
-            <ImageSlot src={coverOf(p)} placeholder="Add cover art" hint="Click to change cover" onFile={f => void hub.setCoverImage(p.id, f)} />
-          </div>
-          <div className="row" style={{ gap: 6, marginTop: 8 }}>
-            <label className="btn-ghost" style={{ padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>
-              {coverOf(p) ? 'Change cover' : 'Add cover'}
-              <input type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void hub.setCoverImage(p.id, f); e.target.value = ''; }} />
-            </label>
-            {coverOf(p) && <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => hub.updProj(p.id, q => ({ ...q, coverImage: undefined, coverArt: undefined }))}>Remove</button>}
-          </div>
-        </div>
+        <Cover hub={hub} p={p} />
         <div style={{ minWidth: 0 }}>
           <div className="row wrap" style={{ gap: 10 }}>
             <h1 className="h1">{p.name}</h1>
@@ -62,11 +135,12 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
               <div className="row" style={{ justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}><span>Progress</span><span className="mono">{t.done}/{t.total}</span></div>
               <div className="bar" style={{ height: 6, borderRadius: 3 }}>{t.shares.map(s => <div key={s.a} style={{ height: '100%', width: s.pct, background: AGENTS[s.a].color }} />)}</div>
             </div>
-            {p.builds.map(b => (
-              <button key={b.id} {...launchProps(hub, p, b)} className="row" style={{ background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', borderRadius: 10, padding: '9px 14px', fontSize: 12, fontWeight: 600 }}>
-                <span style={{ fontSize: 10 }}>▶</span> {PLAT_LABEL[b.platform]} · {b.name}
+            {featured && (
+              <button {...launchProps(hub, p, featured)} className="row" style={{ background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', borderRadius: 10, padding: '9px 14px', fontSize: 12, fontWeight: 600, maxWidth: 360 }}>
+                <span style={{ fontSize: 10 }}>▶</span> <span className="ellipsis">{PLAT_LABEL[featured.platform]} · {featured.name}</span>
               </button>
-            ))}
+            )}
+            {p.builds.length > 1 && <button className="link" onClick={() => patchUi({ tab: 'builds' })}>{p.builds.length - 1} more in Test builds →</button>}
             {confirmRemove ? (
               <span className="row wrap" style={{ fontSize: 12 }}>Remove {p.name} from the library on all your devices? Files on disk are not touched.
                 <button className="btn-ghost" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => hub.removeProject(p.id)}>Remove</button>
@@ -87,6 +161,7 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
       {tab === 'tasks' && <Tasks hub={hub} p={p} />}
       {tab === 'builds' && <Builds hub={hub} p={p} />}
       {tab === 'art' && <ArtTab hub={hub} p={p} />}
+      {tab === 'guides' && <GuidesTab hub={hub} p={p} />}
       {tab === 'gdd' && <Gdd hub={hub} p={p} />}
       {tab === 'engines' && <Stack hub={hub} p={p} />}
       {tab === 'dev' && <Dev hub={hub} p={p} />}
@@ -110,6 +185,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
   const upNext = p.tasks.filter(x => x.status !== 'done').sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1)).slice(0, 5);
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+      <Story hub={hub} p={p} />
       <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
         <h3 className="eyebrow" style={{ marginBottom: 12 }}>GitHub</h3>
         <RepoCard hub={hub} p={p} />
@@ -160,20 +236,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
           </div>
         </div>
       </section>
-      <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
-          <h3 className="eyebrow">Latest concept art</h3>
-          <button className="link" onClick={() => hub.patchUi({ tab: 'art' })}>See all →</button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-          {p.art.slice(0, 4).map(a => (
-            <div key={a.id} style={{ position: 'relative', aspectRatio: '4/3', borderRadius: 10, overflow: 'hidden', background: 'var(--well)' }}>
-              <ImageSlot compact src={a.imagePath} placeholder={a.title} onFile={f => void hub.setArtImage(p.id, a.id, f)} />
-            </div>
-          ))}
-          {!p.art.length && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>No concept art yet — ask Grok.</p>}
-        </div>
-      </section>
+      <ArtPreview hub={hub} p={p} />
     </div>
   );
 }
@@ -216,7 +279,7 @@ function Builds({ hub, p }: { hub: Hub; p: P }) {
   const [draft, setDraft] = useState('');
   return (
     <>
-      <TabIntro text={`Shortcuts and packages Codex produces show up here${isDesktop ? ' — new ones in the project folder or on your Desktop are picked up automatically' : ''}. Web builds open in the browser, desktop shortcuts launch through the native shell, Android builds install on a USB/Wi-Fi-connected device via ADB.`}>
+      <TabIntro text={`Star one to show it on the project page. Shortcuts and packages Codex produces show up here${isDesktop ? ' — new ones in the project folder or on your Desktop are picked up automatically' : ''}. Web builds open in the browser, desktop shortcuts launch through the native shell, Android builds install on a USB/Wi-Fi-connected device via ADB.`}>
         <AgentButton agent="codex" onClick={() => hub.ask(`Package a fresh test build of ${p.name} and put a shortcut on my desktop.`, 'codex')}>Ask Codex for a fresh build</AgentButton>
       </TabIntro>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 820 }}>
@@ -230,6 +293,7 @@ function Builds({ hub, p }: { hub: Hub; p: P }) {
             <div className="row" style={{ gap: 10 }}>
               <span className="mono" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 5, border: '1px solid var(--line-3)', color: 'var(--text-2)' }}>{PLAT_LABEL[b.platform]}</span>
               <span className="hide-narrow" style={{ fontSize: 11, color: AGENTS[b.by].color, fontWeight: 600 }}>{AGENTS[b.by].name} · <span style={{ color: 'var(--muted)', fontWeight: 500 }}>{ago(b.ts)}</span></span>
+                <button title={(p.featuredBuild || p.builds[0]?.id) === b.id ? 'Shown on the project page' : 'Show this one on the project page'} onClick={() => hub.setFeaturedBuild(p.id, b.id)} style={{ background: 'none', border: 0, fontSize: 14, padding: '0 2px', color: (p.featuredBuild || p.builds[0]?.id) === b.id ? 'var(--accent)' : 'var(--dim)' }}>{(p.featuredBuild || p.builds[0]?.id) === b.id ? '★' : '☆'}</button>
               <button className="x" style={{ fontSize: 16 }} onClick={() => hub.removeBuild(p.id, b)}>×</button>
             </div>
           </div>
@@ -239,35 +303,6 @@ function Builds({ hub, p }: { hub: Hub; p: P }) {
           <input className="dashed-input mono" style={{ flex: 1, padding: '10px 12px' }} value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { hub.addBuild(p.id, draft); setDraft(''); } }} placeholder="Paste a shortcut, APK path or URL, e.g. C:\Users\you\Desktop\MyGame_Test.lnk" />
           <button className="btn" style={{ fontSize: 12 }} onClick={() => { hub.addBuild(p.id, draft); setDraft(''); }}>Add</button>
         </div>
-      </div>
-    </>
-  );
-}
-
-function ArtTab({ hub, p }: { hub: Hub; p: P }) {
-  return (
-    <>
-      <TabIntro text="Concept art generated by Grok lands here (and in the project's concept/ folder). Drop your own renders onto any tile to replace it.">
-        <AgentButton agent="grok" onClick={() => hub.ask(`Generate three new concept art pieces for ${p.name} exploring a different mood than what we have.`, 'grok')}>Ask Grok for more art</AgentButton>
-      </TabIntro>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-        {p.art.map(a => (
-          <figure key={a.id} className="card" style={{ margin: 0, overflow: 'hidden' }}>
-            <div style={{ position: 'relative', aspectRatio: '4/3', background: 'var(--well)' }}><ImageSlot src={a.imagePath} placeholder={a.title} onFile={f => void hub.setArtImage(p.id, a.id, f)} /></div>
-            <figcaption style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{a.title}</span>
-              <span style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>{a.prompt}</span>
-              <div className="row" style={{ justifyContent: 'space-between', marginTop: 4 }}>
-                <span className="mono" style={{ fontSize: 10, color: 'var(--ag-grok)' }}>Grok · {ago(a.ts)}</span>
-                <div className="row" style={{ gap: 4 }}>
-                  <button className="btn-ghost" onClick={() => { hub.updProj(p.id, q => ({ ...q, coverArt: a.id, coverImage: undefined })); hub.toast(a.imagePath ? 'Set as cover' : 'Set as cover — drop an image onto this art to show it'); }}>{p.coverArt === a.id ? '★ Cover' : 'Use as cover'}</button>
-                  <button className="x" onClick={() => hub.updProj(p.id, q => ({ ...q, art: q.art.filter(x => x.id !== a.id) }))}>×</button>
-                </div>
-              </div>
-            </figcaption>
-          </figure>
-        ))}
-        {!p.art.length && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>No concept art yet.</p>}
       </div>
     </>
   );
