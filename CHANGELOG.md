@@ -3,6 +3,28 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.5.0] - 2026-09-23
+
+### Added
+- **GitHub integration for projects.**
+  - **Open from GitHub** (Library):
+    - On a computer, pick one of your repos and Mosslight clones it into a folder you choose, detects the engine and builds, and links the repo.
+    - On the phone, the project is added linked to the repo.
+  - **Open local folder** links the folder's GitHub repo automatically when it's a clone.
+  - **Link existing repo** or **Create private repo** from any project's Overview.
+  - **New project** can create a private GitHub repo. On a computer, it also creates a working folder in `~/Mosslight/Projects` with an engine-specific `.gitignore`, Git LFS for large art and audio (if installed), and a first commit pushed to GitHub.
+- **Backups.**
+  - **Back up now** commits and pushes the project folder. It pulls newer GitHub commits first if another computer pushed.
+  - **Auto backup** (on by default) runs after local Claude or Codex runs and every 30 minutes, only when files changed.
+  - The project shows the last backup time, device, commit and any error, on every synced device.
+- **Agents can read the repo.** In API mode, Grok and on the phone, agents get the repo's file list, README and any file you mention by name. Local Claude Code and Codex already work directly in the folder.
+- **Clone to this computer**: projects created on the phone or another PC can be cloned onto the current computer.
+- **⚙ Settings → GitHub**: connect with a GitHub token, stored in the keychain. Setup is in [docs/SETUP.md](https://github.com/amosley0221/Mosslight-Game-Hub/blob/main/docs/SETUP.md#3-github-open-back-up-and-create-project-repos).
+- The project header shows the linked repo, and clicking it opens the repo on GitHub.
+
+### Security
+- Git receives your token through environment variables for github.com only. It never appears on a command line and is never written into the project's git config or remote URL.
+
 ## [0.4.0] - 2026-09-23
 
 ### Added

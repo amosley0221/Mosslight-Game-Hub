@@ -19,7 +19,7 @@ All devices share one library through a private GitHub repo (Settings → Sync a
 
 ## First run
 
-**Full setup guide (sync + agents): [docs/SETUP.md](docs/SETUP.md).**
+**Full setup guide (sync, agents, GitHub): [docs/SETUP.md](docs/SETUP.md).**
 
 1. Open **Settings (⚙)** and add API keys for the agents you want live. An agent without a key or local CLI replies with a short "not set up yet" note and changes nothing.
    - **Claude**: an Anthropic key, or switch Claude to **Local** to use your installed Claude Code CLI (`claude`) inside the project folder.

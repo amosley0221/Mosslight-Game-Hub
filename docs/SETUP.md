@@ -134,3 +134,64 @@ Grok's chat and image models are picked in its Settings row (Load models lists w
 - **Header pills**: each agent's call count goes up as you chat.
 - **Project → Usage tab**: shows calls, tokens and estimated cost per agent, added up across all your devices.
 - **An agent replies "isn't set up on this device yet"**: that agent has no key or CLI on this device. The message says what's missing.
+
+---
+
+## 3. GitHub: open, back up and create project repos
+
+Mosslight can tie each project to its own GitHub repo:
+- Existing projects open straight from their repo.
+- Your work is backed up there.
+- All three agents can read the code.
+- New projects can get a new private repo automatically.
+
+### Step 1: create a GitHub token for project repos (once per device)
+
+This token is separate from the sync token, because it needs access to all your repos.
+
+1. Open **https://github.com/settings/personal-access-tokens/new**.
+2. **Token name**: `Mosslight projects`. Pick an expiration.
+3. **Repository access**: choose **All repositories**.
+4. **Repository permissions**:
+   - **Contents**: Read and write, for cloning, reading and pushing backups.
+   - **Administration**: Read and write, so Mosslight can create new repos.
+   - "Metadata: Read" is added automatically.
+5. Generate the token, then paste it into Mosslight: **⚙ Settings → GitHub (project repos) → Save**. It should say "Connected as @amosley0221".
+
+Add the token on the phone too if you want to open repos or let agents read code from there.
+
+On the computer, install **Git** (https://git-scm.com). Also install **Git LFS** (https://git-lfs.com), strongly recommended for Unreal, Unity and art-heavy projects.
+
+### Opening a project you've already been working on
+
+- **Library → Open from GitHub**, then pick the repo.
+  - **On the computer**: choose where to put it. Mosslight clones it there, detects the engine and builds, and links the repo. The agents then work in that folder, and backups push back to the same repo.
+  - **On the phone**: the project is added to your library, linked to the repo, so the agents can read its code from the phone.
+- **Already have it on disk?** Use **Open local folder**. If the folder is a clone of a GitHub repo, Mosslight links it automatically.
+- **Project exists but isn't linked?** On its Overview, use **GitHub → Link existing repo**.
+
+### Creating a new project
+
+In **New project**, leave **"Create a private GitHub repo"** ticked.
+- On the computer, Mosslight also creates a folder in `~/Mosslight/Projects/<name>` and sets it up:
+  - a `.gitignore` for your engine, so build and cache folders aren't uploaded
+  - Git LFS for large art and audio files (if Git LFS is installed)
+  - a first commit, pushed to the new repo
+- For an existing project, use **GitHub → Create private repo** on its Overview.
+
+### Backups
+
+- **Back up now** (project Overview → GitHub) commits everything that changed and pushes it. If GitHub has newer commits, for example from another computer, Mosslight pulls them in first.
+- **Auto backup** is on by default. It backs up after every local Claude or Codex run that could have changed files, and every 30 minutes, but only when something actually changed.
+- The card shows when and from which device the last backup happened, the commit, and any error. For example, a file over GitHub's 100 MB limit shows an error; install Git LFS for those files.
+- Backups run on the computer that has the project folder. Other computers can use **Clone to this computer**.
+
+### How the agents use the repo
+
+- **Local mode (Claude Code / Codex CLI)**: they work directly in the project folder, so they see and edit everything.
+- **API mode, Grok, and the phone**: each message includes:
+  - the repo's file list
+  - the README
+  - the contents of any file you mention by name, for example *"why does PlayerController.cs jitter?"*
+
+  To have an agent look at a file, mention it.
