@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { AGENTS } from '../core/constants';
 import type { AgentId, Project } from '../core/types';
 import { useImageSrc } from '../sync/images';
@@ -67,10 +68,14 @@ export function Modal({ width, onClose, children, gap = 16 }: { width: number; o
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
-  return (
+  // Through a portal: cards use backdrop-filter, which makes them the containing block for
+  // `position: fixed`, so a modal rendered inside one is trapped in that card and the sections
+  // below it paint over its buttons.
+  return createPortal(
     <div className="scrim" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ width: `min(${width}px, 100%)`, gap }}>{children}</div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

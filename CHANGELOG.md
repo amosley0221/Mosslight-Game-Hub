@@ -3,6 +3,17 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.22.0] - 2026-09-23
+
+### Fixed
+- **Dialogs were trapped inside the card that opened them**, so their buttons could sit under the sections below — the Add button in Find in project was covered by the Documents tiles. Cards use `backdrop-filter`, which makes them the containing block for anything positioned `fixed`; dialogs now render at the top level, above everything, wherever they were opened from.
+- **Documents were proposed as characters.** "Cast Biographies" and "Character Appearance Pass05" are collections, not people. Only files named after one person count as an entry (two or more words, none of them a category word); the collections are now passed to the agent as *where to read the bios from* instead.
+
+### Added
+- **Pick the main picture while reviewing.** Each proposal shows a strip of its pictures — click one to make it the entry's main picture, instead of taking whichever came first.
+
+### Changed
+- Proposals show their picture uncropped, so a full-body reference isn't cut off in the review list.
 ## [0.21.1] - 2026-09-23
 
 ### Fixed

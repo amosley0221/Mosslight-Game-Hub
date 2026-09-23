@@ -55,7 +55,7 @@ function EntryView({ hub, p, section, entry, onClose }: { hub: Hub; p: Project; 
   );
 }
 
-type Proposal = { name: string; images: string[]; body?: string; source?: string; on: boolean };
+type Proposal = { name: string; images: string[]; body?: string; source?: string; cover?: string; on: boolean };
 
 /** What the project looks like it contains — review, edit, then add. Nothing is written until you say so. */
 function SuggestModal({ hub, p, title, seed, onClose }: { hub: Hub; p: Project; title: string; seed?: string; onClose: () => void }) {
@@ -101,13 +101,27 @@ function SuggestModal({ hub, p, title, seed, onClose }: { hub: Hub; p: Project; 
         {(list || []).map((x, i) => (
           <div key={x.name + i} className="card" style={{ padding: 12, display: 'grid', gridTemplateColumns: '22px 96px minmax(0,1fr)', gap: 12, alignItems: 'start', opacity: x.on ? 1 : 0.5 }}>
             <input type="checkbox" checked={x.on} onChange={e => set(i, { on: e.target.checked })} style={{ width: 18, height: 18, marginTop: 4, accentColor: 'var(--accent)' }} />
-            {x.images[0] ? <Pic src={x.images[0]} alt={x.name} height={96} /> : <div style={{ height: 96, display: 'grid', placeItems: 'center', background: 'var(--well)', borderRadius: 10, color: 'var(--dim)', fontSize: 10 }}>no picture</div>}
+            {x.cover || x.images[0]
+              ? <Pic src={x.cover || x.images[0]} alt={x.name} height={96} fit="contain" />
+              : <div style={{ height: 96, display: 'grid', placeItems: 'center', background: 'var(--well)', borderRadius: 10, color: 'var(--dim)', fontSize: 10 }}>no picture</div>}
             <div style={{ minWidth: 0 }}>
               <div className="row" style={{ gap: 8 }}>
                 <input value={x.name} onChange={e => set(i, { name: e.target.value })} style={{ flex: 1, background: 'none', border: 0, fontSize: 15, fontWeight: 600, padding: 0, minWidth: 0 }} />
                 <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{x.images.length} picture{x.images.length === 1 ? '' : 's'}</span>
               </div>
               {x.source && <div className="mono" style={{ fontSize: 10, color: 'var(--dim)', margin: '2px 0 6px' }}>{x.source}</div>}
+              {x.images.length > 1 && (
+                <div className="row no-bar" style={{ gap: 5, overflowX: 'auto', margin: '0 0 6px' }}>
+                  {x.images.slice(0, 12).map(src => {
+                    const main = (x.cover || x.images[0]) === src;
+                    return (
+                      <button key={src} title={main ? 'Main picture' : 'Use this as the main picture'} onClick={() => set(i, { cover: src })} style={{ flex: 'none', width: 46, padding: 0, border: `2px solid ${main ? 'var(--accent)' : 'transparent'}`, borderRadius: 8, background: 'none', overflow: 'hidden' }}>
+                        <Pic src={src} alt="" height={46} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <textarea value={x.body || ''} onChange={e => set(i, { body: e.target.value })} rows={3} placeholder="No notes found — write something, or leave it empty" style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 8, padding: 9, fontSize: 12.5, lineHeight: 1.55, resize: 'vertical', color: 'var(--text-2)' }} />
             </div>
           </div>

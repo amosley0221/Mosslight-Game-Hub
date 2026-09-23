@@ -569,6 +569,8 @@ export function useHub() {
     const want = FOLDER_ALIASES[title.toLowerCase()] || [title.toLowerCase()];
 
     const found = new Map<string, { name: string; images: string[]; source?: string }>();
+    // Collections like Cast-Biographies.md aren't people, but they're where the bios live.
+    const sources: string[] = [];
     const add = (name: string, source?: string) => {
       const key = slugOf(name);
       if (!key || taken.has(key) || name.length < 2) return;
@@ -584,9 +586,19 @@ export function useHub() {
         const inner = await scanFolder(await joinPath(root, dir.name)).catch(() => null);
         for (const e of inner?.entries || []) if (e.is_dir) add(e.name, `${dir.name}/${e.name}`);
       }
-      // Documents named after someone, anywhere in the project.
+      // Documents named after one person ("cal-mercer-bio.md"), never collections
+      // ("Cast-Biographies.md", "Character Appearance Pass05.md") — those are sources, not people.
+      const GENERIC = /^(cast|character|characters|appearance|biographies|biography|bios|profiles|sheets|references|index|readme|notes|overview|summary|pass\d*|v\d+)$/i;
       const docs = await findFiles(root, ['md', 'txt'], 1200).catch(() => []);
-      for (const d of docs) if (/bio|profile|sheet|character|cast/i.test(d.name)) add(nameFromFile(d.name), `${d.folder ? d.folder + '/' : ''}${d.name}`);
+      for (const d of docs) {
+        if (!/bio|profile|sheet|character|cast/i.test(d.name)) continue;
+        const name = nameFromFile(d.name);
+        const words = name.split(/\s+/).filter(Boolean);
+        const source = `${d.folder ? d.folder + '/' : ''}${d.name}`;
+        // A person's own file: two or more words, none of them a category word.
+        if (words.length >= 2 && !words.some(w => GENERIC.test(w))) add(name, source);
+        else sources.push(source);
+      }
 
       // Pictures for each, by folder or file name.
       const pics = await findFiles(root, ['png', 'jpg', 'jpeg', 'webp'], 4000).catch(() => []);
@@ -597,8 +609,12 @@ export function useHub() {
     } catch (e) {
       toast(String((e as Error)?.message || e));
     }
+    lastSources.current = sources.slice(0, 12);
     return [...found.values()].sort((a, b) => b.images.length - a.images.length).slice(0, 40);
   }, [toast]);
+
+  /** Collection documents the last scan saw, handed to the agent as where to read. */
+  const lastSources = useRef<string[]>([]);
 
   /** Bios for a list of names, returned for review instead of written straight in. */
   const proposeBios = useCallback(async (pid: string, title: string, names: string[]): Promise<Record<string, string>> => {
@@ -608,7 +624,11 @@ export function useHub() {
       `For each of these ${title.toLowerCase()} in ${p.name}, give the bio the project's own files already support — do not invent anything that isn't written down.`,
       names.map(n => `- ${n}`).join('\n'),
       '',
-      'Search the whole project for each name in every spelling it might use (Cal Mercer → cal-mercer, cal_mercer, CalMercer, "Cal Mercer") — bio, cast and character sheets anywhere in the repository, and the design and story documents.',
+      ...(lastSources.current.length
+        ? [`Start with these files — the scan found them and they are the likely source: ${lastSources.current.join(', ')}.`]
+        : []),
+      'Also search the whole project for each name in every spelling it might use (Cal Mercer → cal-mercer, cal_mercer, CalMercer, "Cal Mercer") — bio, cast and character sheets anywhere in the repository, and the design and story documents.',
+      'You are running in the project folder and can read these files. If you genuinely cannot read any file, say so once rather than repeating it for every name.',
       'Where a written bio exists, condense it faithfully: keep its facts, age, role and relationships, contradict nothing. Where nothing is written, say in one line what is known and mark the rest unknown.',
       '40–80 words each, plain prose, present tense.',
       'Reply with JSON only: {"entries":[{"name":"<exactly as listed>","body":"<bio>","source":"<file, or none>"}]}',
@@ -627,14 +647,14 @@ export function useHub() {
   }, [dispatch, push, toast]);
 
   /** Adds reviewed entries, with their pictures and notes. */
-  const addEntries = useCallback((pid: string, title: string, list: { name: string; images: string[]; body?: string }[]) => {
+  const addEntries = useCallback((pid: string, title: string, list: { name: string; images: string[]; body?: string; cover?: string }[]) => {
     if (!list.length) return;
     updProj(pid, q => {
       const story = [...(q.story || [])];
       let sec = story.find(s => s.title.toLowerCase() === title.toLowerCase());
       if (!sec) { sec = { id: uid(), title, entries: [], ts: now() }; story.push(sec); }
       const have = new Set(sec.entries.map(e => slugOf(e.name)));
-      const fresh = list.filter(x => !have.has(slugOf(x.name))).map(x => ({ id: uid(), name: x.name, body: x.body, images: x.images, cover: x.images[0], ts: now() }));
+      const fresh = list.filter(x => !have.has(slugOf(x.name))).map(x => ({ id: uid(), name: x.name, body: x.body, images: x.images, cover: x.cover || x.images[0], ts: now() }));
       sec.entries = [...sec.entries, ...fresh];
       return { ...q, story: story.map(s => (s.id === sec!.id ? { ...sec! } : s)), activity: [A('grok', `Added ${fresh.length} to ${title}`), ...q.activity] };
     });
