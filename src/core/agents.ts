@@ -294,9 +294,11 @@ async function callClaudeCli(system: string, text: string, cwd: string | undefin
 }
 
 /** Codex CLI `exec --json`: one JSON event per line (handles both current and older event shapes). */
-async function callCodexCli(system: string, text: string, cwd: string | undefined, model: string | undefined, io: RunIO) {
+async function callCodexCli(system: string, text: string, cwd: string | undefined, model: string | undefined, network: boolean, io: RunIO) {
   const prompt = `${system}\n\n---\n\n${text}`;
-  const base = ['exec', '--skip-git-repo-check', ...(model ? ['-m', model] : [])];
+  // --full-auto sandboxes the workspace with the network off, which fails every git fetch/push.
+  const net = network ? ['-c', 'sandbox_workspace_write.network_access=true'] : [];
+  const base = ['exec', '--skip-git-repo-check', ...net, ...(model ? ['-m', model] : [])];
   let last = '', tokens = 0, err = '';
   const onLine = (line: string) => {
     let j: any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -418,7 +420,7 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
       io.onVia?.('local');
       const r = agent === 'claude'
         ? await callClaudeCli(sys, body, cwd, lm, !!settings.localCommands, io)
-        : await callCodexCli(sys, body, cwd, lm, io);
+        : await callCodexCli(sys, body, cwd, lm, settings.cliNetwork !== false, io);
       return { ...r, via: 'local' };
     } catch (e) {
       if (mode === 'local' || !key || io.signal?.aborted) throw e;

@@ -205,6 +205,8 @@ export interface Settings {
   autoHandoff?: boolean;
   /** Let local Claude Code run shell commands (builds, tests) without asking. */
   localCommands?: boolean;
+  /** Codex's sandbox can reach the network (git fetch/push, installs). Unset means yes. */
+  cliNetwork?: boolean;
   /** Agent that plans Team requests. */
   teamLead?: AgentId;
   device: { name: string; paired: boolean };

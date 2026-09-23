@@ -134,6 +134,15 @@ export function AgentSettings({ hub, keys, onAddKey }: { hub: Hub; keys: Record<
             <Switch on={!!settings.localCommands} onClick={() => updSettings(s => ({ ...s, localCommands: !s.localCommands }))} />
           </div>
         )}
+        {isDesktop && (
+          <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Let Codex reach the network</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Codex's sandbox blocks the network by default, so <span className="mono">git fetch</span>, <span className="mono">git push</span> and package installs fail and it can only see local refs. Turn off to keep it fully offline.</div>
+            </div>
+            <Switch on={settings.cliNetwork !== false} onClick={() => updSettings(s => ({ ...s, cliNetwork: s.cliNetwork === false }))} />
+          </div>
+        )}
       </div>
       <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
         {isDesktop

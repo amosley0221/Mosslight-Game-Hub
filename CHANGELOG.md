@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.13.1] - 2026-09-23
+
+### Fixed
+- **Codex couldn't reach GitHub.** Its sandbox blocks the network by default, so `git fetch`, `git ls-remote` and `git push` failed and it could only verify local refs — reporting "remote Git verification failed" through no fault of your token. Codex now runs with network access, and **⚙ Settings → Agents → Let Codex reach the network** turns it back off if you want it fully offline.
+
 ## [0.13.0] - 2026-09-23
 
 ### Added
