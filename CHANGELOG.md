@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.14.1] - 2026-09-23
+
+### Fixed
+- **Handoffs written in markdown were silently lost.** An agent ending with `**HANDOFF:** claude — …` instead of a bare `HANDOFF:` fell through as plain text: no card, no Approve & run, and the teammate never saw it. Decorated `HANDOFF`, `TASK`, `ART` and `BUILD` lines are now read the same as plain ones, with the emphasis trimmed off the value. Covered by tests.
+
 ## [0.14.0] - 2026-09-23
 
 ### Added

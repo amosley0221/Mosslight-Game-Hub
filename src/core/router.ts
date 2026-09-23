@@ -22,6 +22,8 @@ export function route(text: string): { agent: AgentId | null; hit?: string } {
 }
 
 const AGENT_RE = /^(grok|codex|claude)$/i;
+/** Trims the markdown an agent wrapped around the value. */
+const clean = (s: string) => s.trim().replace(/^\*+|\*+$/g, '').trim();
 
 /**
  * Parse an agent's raw reply: strip HANDOFF / TASK / ART / BUILD control lines
@@ -42,12 +44,15 @@ export function parseReply(raw: string, agent: AgentId, short: string): AgentRes
   }
   const keep: string[] = [];
   for (const ln of body.split('\n')) {
-    const h = ln.match(/^\s*HANDOFF:\s*(grok|codex|claude)\s*[—–-]+\s*(.+)$/i);
-    const k = ln.match(/^\s*TASK:\s*(?:\[(grok|codex|claude)\]\s*)?(.+)$/i);
-    const art = ln.match(/^\s*ART:\s*(.+?)\s*[—–|-]+\s*(.+)$/i);
-    const b = ln.match(/^\s*BUILD:\s*(.+?)\s*\|\s*(.+?)(?:\s*\|\s*(desktop|web|android))?(?:\s*\|\s*(windows|mac|android|web))?\s*$/i);
-    if (h && h[1].toLowerCase() !== agent) res.handoff = { to: h[1].toLowerCase() as AgentId, reason: h[2].trim() };
-    else if (k) res.tasks!.push({ title: k[2].trim(), agent: k[1] && AGENT_RE.test(k[1]) ? (k[1].toLowerCase() as AgentId) : undefined });
+    // Agents like to decorate these lines ("- **HANDOFF:** claude — …"). Undress the label only,
+    // so paths and titles further along the line keep their punctuation.
+    const line = ln.replace(/^\s*(?:[-*>]\s*)?\**_*\s*(HANDOFF|TASK|ART|BUILD)\s*\**_*\s*:\s*\**\s*/i, (_m, w: string) => `${w.toUpperCase()}: `);
+    const h = line.match(/^\s*HANDOFF:\s*\[?(grok|codex|claude)\]?\**\s*[—–:-]+\s*(.+)$/i);
+    const k = line.match(/^\s*TASK:\s*(?:\[(grok|codex|claude)\]\s*)?(.+)$/i);
+    const art = line.match(/^\s*ART:\s*(.+?)\s*[—–|-]+\s*(.+)$/i);
+    const b = line.match(/^\s*BUILD:\s*(.+?)\s*\|\s*(.+?)(?:\s*\|\s*(desktop|web|android))?(?:\s*\|\s*(windows|mac|android|web))?\s*$/i);
+    if (h && h[1].toLowerCase() !== agent) res.handoff = { to: h[1].toLowerCase() as AgentId, reason: clean(h[2]) };
+    else if (k) res.tasks!.push({ title: clean(k[2]), agent: k[1] && AGENT_RE.test(k[1]) ? (k[1].toLowerCase() as AgentId) : undefined });
     else if (art && agent === 'grok') (res.art = res.art || []).push({ title: art[1].trim(), prompt: art[2].trim() });
     else if (b && agent === 'codex') (res.builds = res.builds || []).push({ name: b[1].trim(), path: b[2].trim(), kind: b[3]?.toLowerCase() as BuildKind | undefined, platform: b[4]?.toLowerCase() as Platform | undefined });
     else keep.push(ln);
