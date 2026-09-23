@@ -233,3 +233,42 @@ Choose the **Team** pill and describe something larger, for example *"add a fish
 
 ### What local agents can do
 In Auto or Local mode on the computer, Claude Code and Codex run **inside the project folder** and can edit files. Claude Code can also run builds and tests if you turn on **Let Claude Code run commands** in Settings. With auto backup on, changes are committed and pushed to GitHub afterwards.
+
+---
+
+## 5. Art, music and guides
+
+Each project has tabs for the things around the game, not just the code.
+
+### Art
+The **Art** tab shows every image in the project folder, grouped by the folder it lives in. With a layout like:
+
+```
+F:\Vacancy\Art\Characters
+F:\Vacancy\Art\Concepts
+F:\Vacancy\Art\Maps
+```
+
+you get **Characters**, **Concepts** and **Maps** as groups, with counts. Click an image for the full-screen viewer (arrow keys move, Esc closes), where you can **Use as cover** or **Show in folder**. Build and cache folders are skipped.
+
+Grok's generated concept art appears as its own group.
+
+### Music
+The **Music** tab is the game's soundtrack. Audio in the project folder is picked up automatically, and **Add songs** takes files from anywhere. Play from the list; the player bar at the bottom keeps going while you move around the app. Rename a track by clicking its name.
+
+**The agents can see your tracks.** Their names and file paths go into every agent's context, so you can say *"use Roadside Theme for the main menu"* and local Claude Code or Codex can wire that exact file into the game.
+
+### Guides
+The **Guides** tab holds play guides and design PDFs. PDFs in the project folder appear automatically; **Add a document** takes one from anywhere. They open inside Mosslight.
+
+### Seeing all of it on your phone
+Art, music and guides live on the computer that holds the project folder. To see them on the phone, share them:
+
+- **Art**: open a group and click **Share N images with my devices** (they're downscaled first).
+- **Music**: **Share to my devices** on a track.
+- **Guides**: **Share to my devices** on a document.
+
+Shared items go into your private sync repo and then show, play and open on every paired device.
+
+### New builds
+When Codex makes a build — or a new shortcut appears in the project folder or on your Desktop — the project shows a banner naming it, with **▶ Play this one** and **★ Make it the one shown**. The project page shows just that one build; the rest live in **Test builds**, where a ★ picks which is on the project page.
