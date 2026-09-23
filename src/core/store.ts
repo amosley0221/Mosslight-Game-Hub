@@ -45,7 +45,7 @@ export function totalUsage(d: HubData): Record<AgentId, Usage> {
  * Timestamps whatever a local update changed (so other devices can merge it) and turns
  * removals into deletion markers so they propagate instead of coming back on next sync.
  */
-function stamp(prev: HubData, next: HubData): HubData {
+export function stamp(prev: HubData, next: HubData): HubData {
   if (prev === next) return next;
   const t = now();
   const deleted = { ...(next.deleted || {}) };

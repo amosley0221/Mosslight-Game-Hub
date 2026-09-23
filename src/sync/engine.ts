@@ -56,8 +56,9 @@ export class SyncEngine {
     private getLocal: () => HubData,
     private applyRemote: (d: HubData) => void,
     private onState: (s: SyncState) => void,
+    store?: GitHubStore,
   ) {
-    this.store = new GitHubStore(cfg.repo, cfg.token);
+    this.store = store || new GitHubStore(cfg.repo, cfg.token);
   }
 
   async start() {
@@ -101,6 +102,9 @@ export class SyncEngine {
     window.clearTimeout(this.pushTimer);
     this.pushTimer = window.setTimeout(() => void this.tick(), PUSH_DELAY_MS);
   }
+
+  /** Pull, merge and push once (also used by tests). */
+  syncNow() { return this.tick(); }
 
   private async tick(force = false) {
     if (this.busy) { this.again = true; return; }

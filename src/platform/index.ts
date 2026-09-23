@@ -21,7 +21,7 @@ export const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.p
 export const isDesktop = platform === 'desktop';
 
 /** fetch that bypasses webview CORS (Tauri HTTP plugin / CapacitorHttp patches window.fetch). */
-export const httpFetch: typeof fetch = isTauri ? (tauriFetch as typeof fetch) : window.fetch.bind(window);
+export const httpFetch: typeof fetch = isTauri ? (tauriFetch as typeof fetch) : (input, init) => window.fetch(input, init);
 
 // ── Secrets: OS keychain on desktop, app-private preferences on Android ──────────
 const SECRET_PREFIX = 'mosslight.secret.';
