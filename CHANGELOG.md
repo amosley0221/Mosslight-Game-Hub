@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.25.1] - 2026-09-23
+
+### Fixed
+- **A headless agent job looked like an abandoned session.** `UnrealEditor-Cmd.exe`, an offscreen render, Blender in `--background` — these have no window *by design*, and the Engine & GPU card called them "a session that never shut down", which is an invitation to kill an agent's work mid-run. They're now shown as a **headless job** with the log file they're writing, and ending one warns that it's very likely a run in progress. The agents' copy of the list says the same.
 ## [0.25.0] - 2026-09-23
 
 ### Changed

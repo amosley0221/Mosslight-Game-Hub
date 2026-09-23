@@ -111,6 +111,16 @@ function StoryCard({ hub, p }: { hub: Hub; p: P }) {
 }
 
 /**
+ * Headless on purpose — a commandlet, an offscreen render, Blender in background — rather than a
+ * window that closed and left its process behind. Killing one of these kills an agent's job.
+ */
+const batchJob = (p: EngineProc) =>
+  /-cmd\.exe$|-cmd$/i.test(p.name) || /-unattended|-renderoffscreen|-execcmds|--background|-nosplash|-batchmode|--headless/i.test(p.cmd);
+
+/** The log a batch job was told to write, so you can watch it instead of guessing. */
+const logOf = (p: EngineProc) => p.cmd.match(/-(?:abs)?log="?([^"\s]+)/i)?.[1];
+
+/**
  * What's holding the GPU. Engines routinely survive their own window closing, so a play session
  * from yesterday can still be blocking today's capture with nothing on screen to show for it.
  */
@@ -128,7 +138,12 @@ function EngineSlot() {
   // Shown even when nothing is running: "the slot is free" is the answer people come here for.
   if (!isDesktop) return null;
   const end = async (p: EngineProc) => {
-    if (!window.confirm(`End ${p.name} (PID ${p.pid})?\n\n${p.window ? `Window: ${p.window}` : 'It has no window — usually a session that never shut down.'}\n\nAnything unsaved in it is lost.`)) return;
+    const what = p.window
+      ? `Window: ${p.window}`
+      : batchJob(p)
+        ? `This is a headless job — very likely an agent's run in progress.${logOf(p) ? `\nIts log: ${logOf(p)}` : ''}\nEnding it throws that work away.`
+        : 'It has no window — usually a session that never shut down.';
+    if (!window.confirm(`End ${p.name} (PID ${p.pid})?\n\n${what}\n\nAnything unsaved in it is lost.`)) return;
     setBusy(p.pid);
     try { await endProcess(p.pid); } catch (e) { window.alert(String((e as Error)?.message || e)); }
     setBusy(0);
@@ -153,8 +168,8 @@ function EngineSlot() {
                 <b style={{ fontSize: 13 }}>{p.name}</b>
                 <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>PID {p.pid} · {p.mb} MB{p.started ? ` · since ${p.started.replace('T', ' ').slice(0, 16)}` : ''}</span>
               </span>
-              <span className="ellipsis mono" style={{ display: 'block', fontSize: 10.5, color: p.window ? 'var(--text-2)' : 'var(--danger)', marginTop: 2 }}>
-                {p.window || 'no window — a session that never shut down'}
+              <span className="ellipsis mono" style={{ display: 'block', fontSize: 10.5, color: p.window ? 'var(--text-2)' : batchJob(p) ? 'var(--accent)' : 'var(--danger)', marginTop: 2 }}>
+                {p.window || (batchJob(p) ? `headless job — ${logOf(p) || 'running unattended, leave it alone'}` : 'no window — a session that never shut down')}
               </span>
             </span>
             <button className="btn" disabled={busy === p.pid} onClick={() => void end(p)}>{busy === p.pid ? 'Ending…' : 'End it'}</button>

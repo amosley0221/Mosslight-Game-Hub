@@ -56,13 +56,21 @@ export function runsContext(key: string, self: AgentId | null, names: Record<Age
 }
 
 /** Engines running on this computer, so agents can see what holds the GPU before asking for it. */
-let engines: { name: string; pid: number; window: string; mb: number; started: string }[] = [];
+let engines: { name: string; pid: number; window: string; mb: number; started: string; cmd?: string }[] = [];
 export const setEngineProcs = (list: typeof engines) => { engines = list; };
+
+/** Headless on purpose (a commandlet, an offscreen render) rather than a window that never closed. */
+const isBatch = (e: { name: string; cmd?: string }) =>
+  /-cmd(\.exe)?$/i.test(e.name) || /-unattended|-renderoffscreen|-execcmds|--background|-batchmode|--headless/i.test(e.cmd || '');
+
 export function engineContext(): string[] {
   if (!engines.length) return [];
   return [
     'Engine processes running on this computer right now (the single GPU slot):',
-    ...engines.map(e => `- ${e.name} (PID ${e.pid}, ${e.mb} MB${e.started ? `, since ${e.started.replace('T', ' ').slice(0, 16)}` : ''})${e.window ? ` — window "${e.window}"` : ' — no window, likely a session that never shut down'}`),
-    'Do not start an engine or GPU capture while one of these is running, and never end one yourself: tell the user which it is and let them decide.',
+    ...engines.map(e => {
+      const how = e.window ? ` — window "${e.window}"` : isBatch(e) ? ' — headless job, probably a run already in progress' : ' — no window, likely a session that never shut down';
+      return `- ${e.name} (PID ${e.pid}, ${e.mb} MB${e.started ? `, since ${e.started.replace('T', ' ').slice(0, 16)}` : ''})${how}`;
+    }),
+    'Do not start an engine or GPU capture while one of these is running, and never end one yourself: name it and let the user decide.',
   ];
 }
