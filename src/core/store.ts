@@ -580,7 +580,9 @@ export function useHub() {
       changed = { task: t, from: p.tasks.find(x => x.id === tid)!.status };
       return { ...p, tasks, activity: [A(t.agent, (t.status === 'done' ? 'Completed ' : t.status === 'doing' ? 'Started ' : 'Reopened ') + t.title), ...p.activity] };
     });
-    if (changed) void saveCard(pid, changed.task, `${changed.from} → ${changed.task.status}`);
+    // (TypeScript can't see that updProj ran its callback synchronously.)
+    const c = changed as { task: Task; from: TaskStatus } | null;
+    if (c) void saveCard(pid, c.task, `${c.from} → ${c.task.status}`);
   }, [saveCard, updProj]);
 
   // ── GitHub backups ────────────────────────────────────────────────────────────
