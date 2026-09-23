@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.25.0] - 2026-09-23
+
+### Changed
+- **A run's steps are kept and can be read back.** While an agent works you see the last four, and **▾ N earlier steps** now expands the whole list in place. After it finishes, the line under the reply reads **show N steps** rather than a bare count, so it's clear the history is still there — every step of every run stays with its message.
+- **Up to 200 steps are remembered per run** instead of 40, so a long local run doesn't lose its early work — which is usually where "read AGENTS.md", "searched for the branch" and the other decisions are.
 ## [0.24.1] - 2026-09-23
 
 ### Fixed

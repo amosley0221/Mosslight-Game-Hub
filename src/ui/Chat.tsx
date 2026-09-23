@@ -72,7 +72,9 @@ function RunProgress({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; 
   const steps = m.steps || [];
   const mine = !m.runDevice || m.runDevice === deviceId;
   if (m.pending) {
-    const shown = steps.slice(-4);
+    // Four while it works, all of them when you ask — a long run's early steps are often the
+    // interesting ones ("Reading AGENTS.md", "Searching for the branch").
+    const shown = open ? steps : steps.slice(-4);
     return (
       <div style={{ margin: '2px 0 6px', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line-2)', background: 'var(--surface)' }}>
         <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
@@ -82,8 +84,12 @@ function RunProgress({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; 
           {mine && <button onClick={() => hub.stopRun(chatKey, m)} style={{ background: 'none', border: '1px solid var(--line-3)', color: 'var(--text-2)', borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 600, minHeight: compact ? 32 : undefined }}>{m.queued ? 'Cancel' : 'Stop'}</button>}
         </div>
         {shown.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
-            {steps.length > shown.length && <span className="mono" style={{ fontSize: 10, color: 'var(--dim)' }}>… {steps.length - shown.length} earlier steps</span>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6, maxHeight: open ? 260 : undefined, overflow: open ? 'auto' : undefined }}>
+            {steps.length > 4 && (
+              <button onClick={() => setOpen(!open)} className="mono" style={{ alignSelf: 'flex-start', background: 'none', border: 0, padding: 0, fontSize: 10, color: 'var(--muted)' }}>
+                {open ? '▴ newest only' : `▾ ${steps.length - shown.length} earlier steps`}
+              </button>
+            )}
             {shown.map((s, i) => (
               <span key={i} className="mono ellipsis" style={{ fontSize: 10.5, color: i === shown.length - 1 ? 'var(--text-2)' : 'var(--muted)' }}>{i === shown.length - 1 ? '▸ ' : '✓ '}{s}</span>
             ))}
@@ -96,7 +102,7 @@ function RunProgress({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; 
   return (
     <div style={{ marginBottom: 4 }}>
       <button onClick={() => setOpen(!open)} className="mono" style={{ background: 'none', border: 0, padding: 0, fontSize: 10.5, color: 'var(--muted)' }}>
-        {m.stopped ? 'Stopped' : 'Worked'}{m.startedAt && m.finishedAt ? ` for ${fmtDuration(m.finishedAt - m.startedAt)}` : ''}{steps.length ? ` · ${steps.length} step${steps.length === 1 ? '' : 's'} ${open ? '▴' : '▾'}` : ''}
+        {m.stopped ? 'Stopped' : 'Worked'}{m.startedAt && m.finishedAt ? ` for ${fmtDuration(m.finishedAt - m.startedAt)}` : ''}{steps.length ? ` · ${open ? 'hide' : 'show'} ${steps.length} step${steps.length === 1 ? '' : 's'} ${open ? '▴' : '▾'}` : ''}
       </button>
       {m.interrupted && m.userText && (
         <button
@@ -107,7 +113,7 @@ function RunProgress({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; 
         </button>
       )}
       {open && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4, paddingLeft: 8, borderLeft: '2px solid var(--line-2)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4, paddingLeft: 8, borderLeft: '2px solid var(--line-2)', maxHeight: 320, overflow: 'auto' }}>
           {steps.map((s, i) => <span key={i} className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', wordBreak: 'break-word' }}>{s}</span>)}
         </div>
       )}

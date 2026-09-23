@@ -378,7 +378,7 @@ export function useHub() {
       const history = historyFor(key, id);
       const runStart = now();
       let timer: number | undefined;
-      const flush = () => { timer = undefined; updAgentMsg(key, id, m => ({ text: live.text, steps: live.steps.slice(-40), route: live.via ? `${routeLabel} · ${live.via}` : m.route })); };
+      const flush = () => { timer = undefined; updAgentMsg(key, id, m => ({ text: live.text, steps: live.steps.slice(-200), route: live.via ? `${routeLabel} · ${live.via}` : m.route })); };
       const schedule = () => { if (timer === undefined) timer = window.setTimeout(flush, 250); };
       const proj = dataRef.current.projects.find(p => p.id === key) || null;
 
@@ -406,7 +406,7 @@ export function useHub() {
       }
       updAgentMsg(key, id, {
         text: res.text, pending: false, finishedAt: now(), stopped: res.stopped, error: res.error || res.offline,
-        steps: live.steps.slice(-40), route: res.via ? `${routeLabel} · ${res.via}` : routeLabel,
+        steps: live.steps.slice(-200), route: res.via ? `${routeLabel} · ${res.via}` : routeLabel,
       });
       applyReply(key, agent, text, res);
       // Pictures this run made: art the agent generated, files it wrote, and anything new in the
