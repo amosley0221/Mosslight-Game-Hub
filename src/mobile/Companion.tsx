@@ -8,6 +8,7 @@ import { ChatIntro, Composer, MessageView } from '../ui/Chat';
 import { AddMenu, launchProps, tileInfo } from '../ui/Library';
 import { RepoCard, RepoPicker } from '../ui/GitHub';
 import { ArtTab, GuidesTab } from '../ui/Media';
+import { MusicTab, PlayerBar } from '../ui/Music';
 
 const section = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 };
 
@@ -145,6 +146,10 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
               <ArtTab hub={hub} p={proj} />
             </section>
             <section>
+              <div style={section}>Music</div>
+              <MusicTab hub={hub} p={proj} />
+            </section>
+            <section>
               <div style={section}>Guides</div>
               <GuidesTab hub={hub} p={proj} />
             </section>
@@ -178,6 +183,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
         </div>
       )}
       {fromGitHub && <RepoPicker title="Open from GitHub" hint="Pick a repo — the agents can read it from this phone." onPick={r => void hub.openFromGitHub(r)} onClose={() => setFromGitHub(false)} />}
+      <PlayerBar compact />
       <Toast text={ui.toast} style={{ bottom: 'calc(24px + env(safe-area-inset-bottom))', left: 16, right: 16, transform: 'none', borderRadius: 12, fontSize: 12 }} />
     </div>
   );

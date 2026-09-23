@@ -46,8 +46,25 @@ export interface Project {
   docs?: ProjectDoc[];
   /** Art copied into sync so every device (phone included) can see it. */
   sharedArt?: SharedArt[];
+  /** Music written for the game. */
+  music?: MusicTrack[];
+  /** A just-arrived build worth pointing at. */
+  spotlight?: { buildId: string; ts: number };
   /** Last-modified time, used to merge edits from other devices. */
   u?: number;
+}
+
+export interface MusicTrack {
+  id: string;
+  name: string;
+  /** Absolute path on `device`. */
+  path: string;
+  device?: string;
+  folder?: string;
+  size?: number;
+  /** img: reference once shared, so it plays on every device. */
+  ref?: string;
+  ts: number;
 }
 
 export interface SharedArt {

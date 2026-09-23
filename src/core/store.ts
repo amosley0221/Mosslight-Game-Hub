@@ -228,7 +228,9 @@ export function useHub() {
         if (res.tasks?.length) { q.tasks = [...q.tasks, ...res.tasks.map(t => T(t.agent || agent, t.title, 'todo', 0))]; q.activity = [...res.tasks.map(t => A(t.agent || agent, 'Task added: ' + t.title)), ...q.activity]; }
         if (res.art?.length) { q.art = [...res.art.map(a => ({ id: uid(), title: a.title, prompt: a.prompt, imagePath: a.imagePath, ts: now() })), ...q.art]; q.activity = [...res.art.map(a => A('grok', 'Generated concept: ' + a.title)), ...q.activity]; }
         if (res.builds?.length) {
-          q.builds = [...res.builds.map(b => ({ id: uid(), name: b.name, path: b.path, kind: b.kind || kindOfFile(b.path), platform: b.platform || platformOfFile(b.path), by: 'codex' as AgentId, ts: now(), device: isUrl(b.path) ? undefined : deviceId })), ...q.builds];
+          const fresh = res.builds.map(b => ({ id: uid(), name: b.name, path: b.path, kind: b.kind || kindOfFile(b.path), platform: b.platform || platformOfFile(b.path), by: 'codex' as AgentId, ts: now(), device: isUrl(b.path) ? undefined : deviceId }));
+          q.builds = [...fresh, ...q.builds];
+          q.spotlight = { buildId: fresh[0].id, ts: now() };
           q.activity = [...res.builds.map(b => A('codex', 'Registered test build ' + b.name)), ...q.activity];
         }
         if (res.code?.length) { q.code = [...res.code.map(k => ({ id: uid(), agent, title: k.title, file: k.file || '', lang: k.lang || '', code: k.code, ts: now() })), ...q.code]; q.activity = [...res.code.map(k => A(agent, 'Code logged: ' + k.title)), ...q.activity]; }
@@ -648,7 +650,8 @@ export function useHub() {
         }
         const fresh = found.filter(b => !p.builds.some(x => x.path === b.path) && !(p.dismissed || []).includes(b.path));
         if (fresh.length && !stop) {
-          updProj(p.id, q => ({ ...q, builds: [...fresh.filter(b => !q.builds.some(x => x.path === b.path)), ...q.builds], activity: [...fresh.map(b => A('codex', 'New build detected: ' + b.name)), ...q.activity] }));
+          // Point at the newest one so it's obvious which shortcut to click.
+          updProj(p.id, q => ({ ...q, builds: [...fresh.filter(b => !q.builds.some(x => x.path === b.path)), ...q.builds], spotlight: { buildId: fresh[0].id, ts: now() }, activity: [...fresh.map(b => A('codex', 'New build detected: ' + b.name)), ...q.activity] }));
           toast(`New build for ${p.name}: ${fresh[0].name}`);
         }
       }
@@ -773,6 +776,23 @@ export function useHub() {
     toast(group ? `${group} is no longer shared` : 'Shared art removed');
   }, [updProj, toast]);
 
+  /** Copies a song into sync so it plays on the phone too. */
+  const shareTrack = useCallback(async (pid: string, t: { id: string; path: string; name: string }) => {
+    if (!engineRef.current) return toast('Turn on sync in Settings first');
+    setSharing({ done: 0, total: 1 });
+    try {
+      const bytes = await readFileBytes(t.path, 60 * 1024 * 1024);
+      const ref = await uploadFile(bytes, (t.path.split('.').pop() || 'mp3').toLowerCase());
+      if (!ref) throw new Error('Upload failed');
+      updProj(pid, p => ({ ...p, music: (p.music || []).map(m => (m.id === t.id ? { ...m, ref } : m)) }));
+      toast(`${t.name} now plays on your other devices`);
+    } catch (e) {
+      toast(`Couldn't share ${t.name}: ${(e as Error)?.message || e}`);
+    } finally {
+      setSharing(null);
+    }
+  }, [updProj, toast]);
+
   /** Copies a PDF/doc into sync so it opens on the phone too. */
   const shareDoc = useCallback(async (pid: string, doc: ProjectDoc) => {
     if (!engineRef.current) return toast('Turn on sync in Settings first');
@@ -792,7 +812,8 @@ export function useHub() {
       setSharing(null);
     }
   }, [updProj, toast]);
-  const setFeaturedBuild = useCallback((pid: string, bid: string | undefined) => updProj(pid, p => ({ ...p, featuredBuild: p.featuredBuild === bid ? undefined : bid })), [updProj]);
+  const setFeaturedBuild = useCallback((pid: string, bid: string | undefined) => updProj(pid, p => ({ ...p, featuredBuild: p.featuredBuild === bid ? undefined : bid, spotlight: p.spotlight?.buildId === bid ? undefined : p.spotlight })), [updProj]);
+  const clearSpotlight = useCallback((pid: string) => updProj(pid, p => ({ ...p, spotlight: undefined })), [updProj]);
   const setSummary = useCallback((pid: string, summary: string) => updProj(pid, p => ({ ...p, summary })), [updProj]);
 
   const setArtImage = useCallback(async (pid: string, aid: string, file: File) => {
@@ -937,7 +958,7 @@ export function useHub() {
     send, ask, dispatch, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
-    shareArt, unshareArt, shareDoc, sharing,
+    shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
     busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,

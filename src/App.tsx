@@ -10,6 +10,7 @@ import { Modal, RichText, Splash, Toast, UpdateBanner, useUpdate } from './ui/co
 import { Header, Library, NewProject } from './ui/Library';
 import { Project } from './ui/Project';
 import { Integrations, Settings } from './ui/Settings';
+import { PlayerBar } from './ui/Music';
 
 export default function App() {
   const hub = useHub();
@@ -83,6 +84,7 @@ export default function App() {
         </main>
         {ui.chatOpen && <ChatRail hub={hub} />}
       </div>
+      <PlayerBar />
       {overlays}
       <Toast text={ui.toast} />
       <Splash />

@@ -6,6 +6,7 @@ import { A, T, ago, pct, uid, uniq } from '../core/util';
 import { copyText, isDesktop, openExternal } from '../platform';
 import { RepoCard } from './GitHub';
 import { ArtTab, GuidesTab, useProjectImages } from './Media';
+import { MusicTab } from './Music';
 import { Dot, Glyph, coverOf } from './common';
 import { useImageSrc } from '../sync/images';
 import { TagPicks, launchProps, recommend, tileInfo } from './Library';
@@ -111,7 +112,8 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const t = tileInfo(p);
   const featured = p.builds.find(b => b.id === p.featuredBuild) || p.builds[0];
-  const tabs: [string, string][] = [['overview', 'Overview'], ['tasks', 'Tasks'], ['builds', 'Test builds'], ['art', 'Art'], ['guides', 'Guides'], ['gdd', 'GDD'], ['engines', 'Stack'], ...(settings.devMode ? [['dev', 'Dev'] as [string, string]] : []), ['activity', 'Activity'], ['usage', 'Usage']];
+  const spot = p.spotlight ? p.builds.find(b => b.id === p.spotlight!.buildId) : undefined;
+  const tabs: [string, string][] = [['overview', 'Overview'], ['tasks', 'Tasks'], ['builds', 'Test builds'], ['art', 'Art'], ['music', 'Music'], ['guides', 'Guides'], ['gdd', 'GDD'], ['engines', 'Stack'], ...(settings.devMode ? [['dev', 'Dev'] as [string, string]] : []), ['activity', 'Activity'], ['usage', 'Usage']];
   const tab = tabs.some(x => x[0] === ui.tab) ? ui.tab : 'overview';
 
   return (
@@ -151,6 +153,17 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
         </div>
       </div>
 
+      {spot && (
+        <div className="banner" style={{ borderRadius: 12, border: '1px solid var(--ag-codex)', background: 'color-mix(in srgb, var(--ag-codex) 12%, transparent)', marginBottom: 18, flexWrap: 'wrap' }}>
+          <b>New test build: {spot.name}</b>
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>{ago(spot.ts)} · {PLAT_LABEL[spot.platform]}</span>
+          <span style={{ flex: 1 }} />
+          <button {...launchProps(hub, p, spot)} className="btn-accent" style={{ padding: '6px 12px', fontSize: 12, background: 'var(--ag-codex)', color: 'var(--on-agent)' }}>▶ Play this one</button>
+          {featured?.id !== spot.id && <button className="btn" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => hub.setFeaturedBuild(p.id, spot.id)}>★ Make it the one shown</button>}
+          <button className="x" title="Dismiss" onClick={() => hub.clearSpotlight(p.id)}>×</button>
+        </div>
+      )}
+
       <nav className="row" style={{ gap: 4, borderBottom: '1px solid var(--line)', marginBottom: 22, overflowX: 'auto' }}>
         {tabs.map(([id, label]) => (
           <button key={id} onClick={() => patchUi({ tab: id })} style={{ background: 'none', border: 0, borderBottom: `2px solid ${tab === id ? 'var(--green)' : 'transparent'}`, color: tab === id ? 'inherit' : 'var(--muted)', padding: '10px 12px', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</button>
@@ -161,6 +174,7 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
       {tab === 'tasks' && <Tasks hub={hub} p={p} />}
       {tab === 'builds' && <Builds hub={hub} p={p} />}
       {tab === 'art' && <ArtTab hub={hub} p={p} />}
+      {tab === 'music' && <MusicTab hub={hub} p={p} />}
       {tab === 'guides' && <GuidesTab hub={hub} p={p} />}
       {tab === 'gdd' && <Gdd hub={hub} p={p} />}
       {tab === 'engines' && <Stack hub={hub} p={p} />}

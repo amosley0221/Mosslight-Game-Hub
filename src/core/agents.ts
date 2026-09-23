@@ -40,6 +40,10 @@ function projectContext(proj: Project | null) {
     `Platforms: ${proj.platforms.join(', ')}`,
     `Traits: ${proj.tags.join(', ') || 'none'}`,
     localFolder(proj) ? `Local folder: ${localFolder(proj)!.path}` : 'No local folder on this device.',
+    ...(proj.summary ? ['Story: ' + proj.summary.slice(0, 700)] : []),
+    ...(proj.music?.length
+      ? ['Music the user has written for this game (use these exact files when asked to put music in the game):', ...proj.music.slice(0, 40).map(m => `- "${m.name}" → ${m.path}`)]
+      : []),
     'Open tasks:',
     ...proj.tasks.filter(t => t.status !== 'done').map(t => `- [${AGENTS[t.agent].name}] ${t.title} (${t.status})`),
   ].join('\n');

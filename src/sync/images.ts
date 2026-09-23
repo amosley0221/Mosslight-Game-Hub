@@ -27,7 +27,7 @@ async function cacheGet(ref: string): Promise<Blob | null> {
   try { const c = await caches.open(CACHE); const r = await c.match('https://mosslight.local/' + ref); return r ? r.blob() : null; } catch { return null; }
 }
 
-const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf' };
+const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac', m4a: 'audio/mp4', aac: 'audio/aac' };
 const mimeOf = (ref: string) => MIME[(ref.split('.').pop() || '').toLowerCase()] || 'application/octet-stream';
 
 /**
@@ -36,7 +36,7 @@ const mimeOf = (ref: string) => MIME[(ref.split('.').pop() || '').toLowerCase()]
  */
 export async function uploadFile(bytes: Uint8Array, ext = 'jpg'): Promise<string | null> {
   if (!store) return null;
-  const dir = ext === 'pdf' ? 'files' : 'images';
+  const dir = ext === 'pdf' || /^(mp3|wav|ogg|flac|m4a|aac)$/.test(ext) ? 'files' : 'images';
   const path = `${dir}/${await sha256Hex(bytes)}.${ext}`;
   const ref = 'img:' + path;
   if (!(await store.exists(path))) {
@@ -51,7 +51,7 @@ export async function uploadFile(bytes: Uint8Array, ext = 'jpg'): Promise<string
 
 export const uploadImage = uploadFile;
 
-async function resolveRef(ref: string): Promise<string | undefined> {
+export async function resolveRef(ref: string): Promise<string | undefined> {
   if (mem.has(ref)) return mem.get(ref);
   if (inflight.has(ref)) return inflight.get(ref);
   const p = (async () => {
