@@ -450,6 +450,94 @@ export function useHub() {
     if (!res.error && !res.offline && !res.stopped && res.text) updProj(pid, q => ({ ...q, gdd: q.gdd.map(g => (g.id === sid ? { ...g, body: res.text } : g)) }));
   }, [dispatch, push, updProj]);
 
+  /** "Draft with Grok" for the story: the reply lands in the summary, not just in the chat. */
+  const draftSummary = useCallback(async (pid: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    if (!p) return;
+    const text = `Write the story summary for ${p.name} — what the game is about, the setting, the player's role and the hook. 150–250 words, plain prose, no headings. Reply with the summary only; it goes straight into the project's Story tab.`;
+    push(pid, { id: uid(), type: 'user', text });
+    const res = await dispatch(pid, 'grok', text, 'drafting the story');
+    if (!res.error && !res.offline && !res.stopped && res.text) {
+      updProj(pid, q => ({ ...q, summary: res.text, activity: [A('grok', 'Drafted the story summary'), ...q.activity] }));
+      toast('Story summary updated');
+    }
+  }, [dispatch, push, toast, updProj]);
+
+  /**
+   * Builds a story section from a folder of folders: "Characters/Ray Calder/*.png" becomes an
+   * entry named Ray Calder with those pictures. It's the layout people already keep art in.
+   */
+  const importEntries = useCallback(async (pid: string, title: string, root: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    if (!p || !isDesktop) return 0;
+    let files: { path: string; folder: string; name: string }[] = [];
+    try {
+      files = await findFiles(root, ['png', 'jpg', 'jpeg', 'webp', 'bmp'], 2000);
+    } catch (e) {
+      toast(String((e as Error)?.message || e));
+      return 0;
+    }
+    // One entry per immediate subfolder; images sitting loose in the root are ignored.
+    const byName = new Map<string, string[]>();
+    for (const f of files) {
+      const first = f.folder.split('/')[0];
+      if (!first) continue;
+      const list = byName.get(first) || [];
+      if (list.length < 40) list.push(f.path);
+      byName.set(first, list);
+    }
+    if (!byName.size) {
+      toast('No subfolders with pictures in there — pick the folder that holds one folder per character');
+      return 0;
+    }
+    updProj(pid, q => {
+      const story = [...(q.story || [])];
+      let sec = story.find(s => s.title.toLowerCase() === title.toLowerCase());
+      if (!sec) { sec = { id: uid(), title, entries: [], ts: now() }; story.push(sec); }
+      const have = new Set(sec.entries.map(e => e.name.toLowerCase()));
+      const fresh = [...byName.entries()]
+        .filter(([name]) => !have.has(name.toLowerCase()))
+        .map(([name, images]) => ({ id: uid(), name, images, cover: images[0], ts: now() }));
+      sec.entries = [...sec.entries, ...fresh];
+      return { ...q, story: story.map(s => (s.id === sec!.id ? { ...sec! } : s)), activity: [A('grok', `Added ${fresh.length} ${title.toLowerCase()} from ${baseName(root)}`), ...q.activity] };
+    });
+    toast(`Added ${byName.size} to ${title}`);
+    return byName.size;
+  }, [toast, updProj]);
+
+  /** Fills in the blank bios in a section, from what the project's own files say. */
+  const draftEntries = useCallback(async (pid: string, sid: string, agent: AgentId = 'claude') => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const sec = p?.story?.find(s => s.id === sid);
+    if (!p || !sec) return;
+    const blank = sec.entries.filter(e => !e.body?.trim());
+    if (!blank.length) { toast('Every entry already has notes'); return; }
+    const names = blank.slice(0, 25).map(e => e.name);
+    const text = [
+      `Write short bios for these ${sec.title.toLowerCase()} in ${p.name}, from what the project's own documents and art say — do not invent facts that aren't there.`,
+      names.map(n => `- ${n}`).join('\n'),
+      '',
+      'Read the design docs, story files and anything under Docs/ in the project folder first. 40–80 words each, plain prose, present tense. Where the documents say nothing about someone, write one line saying what is known (for example the pictures that exist) and mark the rest unknown.',
+      'Reply with JSON only, no prose around it: {"entries":[{"name":"<exactly as listed>","body":"<bio>"}]}',
+    ].join('\n');
+    push(pid, { id: uid(), type: 'user', text });
+    const res = await dispatch(pid, agent, text, `writing ${sec.title.toLowerCase()} notes`);
+    if (res.error || res.offline || res.stopped || !res.text) return;
+    try {
+      const json = res.text.slice(res.text.indexOf('{'), res.text.lastIndexOf('}') + 1);
+      const parsed = JSON.parse(json) as { entries?: { name?: string; body?: string }[] };
+      const byName = new Map((parsed.entries || []).filter(e => e.name && e.body).map(e => [e.name!.toLowerCase().trim(), e.body!.trim()]));
+      if (!byName.size) { toast("That reply didn't contain bios — try again, or paste them in by hand"); return; }
+      updProj(pid, q => ({
+        ...q,
+        story: (q.story || []).map(s => (s.id !== sid ? s : { ...s, entries: s.entries.map(e => (e.body?.trim() || !byName.has(e.name.toLowerCase()) ? e : { ...e, body: byName.get(e.name.toLowerCase()) })) })),
+      }));
+      toast(`Wrote ${byName.size} bio${byName.size === 1 ? '' : 's'}`);
+    } catch {
+      toast("Couldn't read that reply as bios — it's still in the chat");
+    }
+  }, [dispatch, push, toast, updProj]);
+
   // ── Team mode ────────────────────────────────────────────────────────────────
   /** The team lead drafts a plan (steps per agent); you approve it once, then it runs. */
   const startTeam = useCallback(async (key: string, text: string, files: Attachment[] = []) => {
@@ -1336,6 +1424,7 @@ export function useHub() {
     addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief, syncCards, addArtImages,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
+    draftSummary, importEntries, draftEntries,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
     busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,

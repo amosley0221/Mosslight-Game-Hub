@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Hub } from '../core/store';
 import type { Project, StoryEntry, StorySection } from '../core/types';
-import { isDesktop } from '../platform';
+import { isDesktop, pickFolder } from '../platform';
 import { useImageSrc } from '../sync/images';
 import { Modal } from './common';
 import { ImagePicker } from './Media';
@@ -59,6 +59,8 @@ function SectionView({ hub, p, s }: { hub: Hub; p: Project; s: StorySection }) {
   const [title, setTitle] = useState(s.title);
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState('');
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
   useEffect(() => setTitle(s.title), [s.title]);
   const entry = s.entries.find(e => e.id === open);
   const add = () => {
@@ -71,7 +73,16 @@ function SectionView({ hub, p, s }: { hub: Hub; p: Project; s: StorySection }) {
     <section className="card" style={{ padding: 18, marginBottom: 16 }}>
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
         <input value={title} onChange={e => setTitle(e.target.value)} onBlur={() => title.trim() && title !== s.title && hub.renameSection(p.id, s.id, title.trim())} style={{ background: 'none', border: 0, fontSize: 16, fontWeight: 600, padding: 0, minWidth: 0 }} />
-        <div className="row" style={{ gap: 6 }}>
+        <div className="row wrap" style={{ gap: 6 }}>
+          {isDesktop && (
+            <button className="btn-ghost" disabled={busy} title={`Pick a folder that holds one folder per ${s.title.replace(/s$/, '').toLowerCase()}`} onClick={() => void run(async () => {
+              const dir = await pickFolder();
+              if (dir) await hub.importEntries(p.id, s.title, dir);
+            })}>Import from folder…</button>
+          )}
+          {s.entries.some(e => !e.body?.trim()) && (
+            <button className="btn-ghost" disabled={busy} onClick={() => void run(() => hub.draftEntries(p.id, s.id))}>{busy ? 'Writing…' : 'Write the missing notes'}</button>
+          )}
           <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{s.entries.length}</span>
           <button className="x" title={`Remove the ${s.title} section`} onClick={() => hub.removeSection(p.id, s.id)}>×</button>
         </div>
@@ -103,6 +114,7 @@ export function StoryTab({ hub, p }: { hub: Hub; p: Project }) {
   const [draft, setDraft] = useState(p.summary || '');
   const [editing, setEditing] = useState(false);
   const [newSection, setNewSection] = useState('');
+  const [drafting, setDrafting] = useState(false);
   const sections = p.story || [];
   useEffect(() => { if (!editing) setDraft(p.summary || ''); }, [p.summary, editing]);
 
@@ -113,7 +125,7 @@ export function StoryTab({ hub, p }: { hub: Hub; p: Project }) {
           <h3 className="eyebrow">The story</h3>
           <div className="row" style={{ gap: 6 }}>
             <button className="btn-ghost" onClick={() => { if (editing) hub.setSummary(p.id, draft); setEditing(!editing); }}>{editing ? 'Save' : p.summary ? 'Edit' : 'Write'}</button>
-            <button className="btn-ghost" onClick={() => hub.ask(`Write the story summary for ${p.name} — what the game is about, the setting, the player's role and the hook. 150–250 words, plain prose.`, 'grok')}>Draft with Grok</button>
+            <button className="btn-ghost" disabled={drafting} onClick={() => { setDrafting(true); void hub.draftSummary(p.id).finally(() => setDrafting(false)); }}>{drafting ? 'Grok is writing…' : 'Draft with Grok'}</button>
           </div>
         </div>
         {editing

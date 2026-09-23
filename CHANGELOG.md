@@ -3,6 +3,15 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.19.0] - 2026-09-23
+
+### Fixed
+- **"Draft with Grok" didn't write the story.** It sent the request to the chat and left the reply there, so the Story tab still said "No story yet" and you had to copy it across by hand. The draft now lands in the summary itself (and is still in the chat if you want the earlier attempt).
+
+### Added
+- **Build a section from your folders.** Any story section has **Import from folder…**: point it at the folder that holds one folder per character — `Characters/Ray Calder/*.png` — and every subfolder becomes an entry with its pictures attached and the first one as the main picture. Names already in the section are skipped, so you can run it again after adding art.
+- **Write the missing notes.** Once entries exist, one button asks a local agent to write each missing bio *from the project's own documents* — it reads `Docs/` and the design files, keeps to 40–80 words, and marks what the documents don't say as unknown instead of inventing it. Entries you've already written are left alone, and everything stays editable by hand.
+
 ## [0.18.0] - 2026-09-23
 
 ### Fixed
