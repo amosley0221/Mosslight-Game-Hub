@@ -290,7 +290,10 @@ export function Composer({ hub, compact }: { hub: Hub; compact?: boolean }) {
 
 export function ChatRail({ hub }: { hub: Hub }) {
   const { proj, chatKey, data } = hub;
-  const msgs = data.messages[chatKey] || [];
+  const all = data.messages[chatKey] || [];
+  // Long histories are kept in full — only the tail is rendered, so a thousand messages stay quick.
+  const [shown, setShown] = useState(120);
+  const msgs = all.slice(-shown);
   const end = useRef<HTMLDivElement>(null);
   const last = msgs[msgs.length - 1] as AgentMsg | undefined;
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [msgs.length, last?.text?.length, last?.steps?.length]);
@@ -302,6 +305,11 @@ export function ChatRail({ hub }: { hub: Hub }) {
       </div>
       <div style={{ overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
         {msgs.length === 0 && <ChatIntro />}
+        {all.length > msgs.length && (
+          <button className="btn" style={{ alignSelf: 'center' }} onClick={() => setShown(n => n + 200)}>
+            Show earlier messages <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{all.length - msgs.length} older</span>
+          </button>
+        )}
         {msgs.map(m => <div key={m.id} className="rise"><MessageView hub={hub} chatKey={chatKey} m={m} /></div>)}
         <div ref={end} />
       </div>

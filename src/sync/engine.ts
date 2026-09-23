@@ -2,7 +2,7 @@ import type { HubData } from '../core/types';
 import { getSecret, setSecret } from '../platform';
 import { deviceId, deviceOs, getDeviceName } from './device';
 import { GitHubStore } from './github';
-import { fingerprint, merge, toDoc, type SyncDoc } from './merge';
+import { fingerprint, fitDoc, merge, type SyncDoc } from './merge';
 
 const DOC = 'hub.json';
 const REPO_KEY = 'mosslight.sync.repo';
@@ -127,8 +127,9 @@ export class SyncEngine {
           merged = merge(local, remote);
           if (fingerprint(merged) !== fingerprint(local)) this.applyRemote(merged);
         }
-        const out = JSON.stringify(toDoc(merged));
-        const remoteSame = remote ? fingerprint(remote) === fingerprint(toDoc(merged)) : false;
+        const fitted = fitDoc(merged);
+        const out = fitted.json;
+        const remoteSame = remote ? fingerprint(remote) === fingerprint(fitted.doc) : false;
         if (remoteSame) { this.lastPushed = out; break; }
         if (r.status === 'same' && out === this.lastPushed) break;
         const res = await this.store.write(DOC, out, this.sha, `Sync from ${getDeviceName()}`);

@@ -242,6 +242,16 @@ Attach files to any message with the **📎** button, by dragging them onto the 
 
 Attachments sync, so a screenshot you send from your phone is on the desktop too, and tapping one in the chat opens it. Big images are resized before they're sent, so a 4K screenshot doesn't cost a fortune in tokens.
 
+### Telling the agents about a project that already has history
+The chat is a log for you, not memory for the agents — each message is sent on its own, with no previous messages attached. So pasting last week's context into one message only affects that message. Put lasting facts where they're sent every time:
+
+1. **`AGENTS.md` in the project folder** — standing rules and current state: who owns what, branch rules, what's built and what isn't, which documents to trust. Local Claude Code and Codex read it themselves, and Mosslight also loads it (or `CLAUDE.md`, or `Docs/PROJECT-HANDOFF.md`) into *every* agent's context, so Grok and your phone get the same rules. The **Project instructions** card on Overview shows what was found.
+2. **The Story summary** — a short baseline of what the game is and where it stands. It goes to every agent on every device.
+3. **Tasks** — open tasks are listed in context, so nobody proposes work that's already queued.
+4. **A linked GitHub repo** — only used for agents that *can't* see the folder (Grok, the phone, API fallbacks): they get the file list, the README, and any file you name by path in your message. Local runs read your disk directly.
+
+With those in place, **Team** mode plans against the real project: the lead checks `AGENTS.md`, the docs folder and recent git history before proposing steps, and says when work is already underway instead of planning it twice.
+
 ### The loading screen (brand kit)
 Every project can have the Mosslight screen that plays before the game boots. Tick **Add the Mosslight loading screen** when you create a project, or use the **Loading screen** card on any project's Overview.
 

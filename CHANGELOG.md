@@ -3,6 +3,19 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.12.0] - 2026-09-23
+
+### Added
+- **Your project's own instructions now reach every agent.** If the project folder has `AGENTS.md`, `CLAUDE.md` or `Docs/PROJECT-HANDOFF.md`, Mosslight reads it and sends it with every request — including to Grok, to agents running from your phone, and to API fallbacks that can't see your disk. A **Project instructions** card on Overview shows which files were found, lets you read them, and re-reads on demand. Keep the standing rules in one file in the repo; the hub keeps itself honest from there.
+- **The team lead reads the project before it plans.** Running locally, the lead is now told to check `AGENTS.md`, the docs folder and recent git history first, to say when work is already underway instead of planning it again, and never to open with "write a pitch" for a project that clearly has work behind it.
+
+### Changed
+- **Chat history is kept in full and synced in full.** The per-thread sync cap went from 300 messages to 5,000, so a long project history reaches every device instead of being cut off. A library large enough to make one document unwieldy trims only that upload, never what's stored on your devices.
+- **The phone keeps the whole history too.** It used to show the last 6 messages with no way back; now it renders the recent ones with **Show earlier messages**, and the desktop rail does the same past 120, so a thousand-message thread stays quick to open.
+
+### Fixed
+- **The library could stop saving without telling you.** It lived in browser local storage, which caps out around 5 MB and then throws — and that error was being swallowed, so new work would vanish on the next restart. The library now lives in IndexedDB (hundreds of MB), the old copy is migrated over on first launch, and if a save ever fails you get told instead of losing work quietly.
+
 ## [0.11.0] - 2026-09-23
 
 ### Fixed

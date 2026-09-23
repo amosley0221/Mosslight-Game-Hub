@@ -27,7 +27,10 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
     return () => { void h.then(x => x.remove()); };
   }, [hub.ui.view, patchUi]);
 
-  const msgs = proj ? (data.messages[proj.id] || []).slice(-6) : [];
+  const [shown, setShown] = useState(12);
+  // The phone keeps the whole history now; it just renders the tail until you ask for more.
+  const all = proj ? data.messages[proj.id] || [] : [];
+  const msgs = all.slice(-shown);
   useEffect(() => { if (ui.busy) chatEnd?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [ui.busy, msgs.length, chatEnd]);
   useEffect(() => { scroller.current?.scrollTo(0, 0); }, [proj?.id]);
 
@@ -152,6 +155,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
               <div style={section}>Chat</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
                 {msgs.length === 0 && <ChatIntro compact />}
+                {all.length > msgs.length && <button className="btn" style={{ alignSelf: 'center' }} onClick={() => setShown(n => n + 40)}>Show earlier messages</button>}
                 {msgs.map(m => <MessageView key={m.id} hub={hub} chatKey={proj.id} m={m} compact />)}
                 <div ref={setChatEnd} />
               </div>

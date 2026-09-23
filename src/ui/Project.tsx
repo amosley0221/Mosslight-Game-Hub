@@ -109,6 +109,37 @@ function StoryCard({ hub, p }: { hub: Hub; p: P }) {
   );
 }
 
+/** Overview card: the project's own instruction files, which every agent is given. */
+function BriefCard({ hub, p }: { hub: Hub; p: P }) {
+  const [open, setOpen] = useState(false);
+  if (!p.brief && !(isDesktop && p.folder?.path)) return null;
+  return (
+    <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
+      <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 10, gap: 10 }}>
+        <h3 className="eyebrow">Project instructions{p.brief ? ` · ${p.brief.files.join(' + ')}` : ''}</h3>
+        <div className="row" style={{ gap: 10 }}>
+          {p.brief && <button className="link" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Read'}</button>}
+          {isDesktop && p.folder?.path && <button className="link" onClick={() => void hub.refreshBrief(p.id, true)}>Re-read</button>}
+        </div>
+      </div>
+      {p.brief ? (
+        <>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)' }}>
+            Every agent gets these with every message — on this computer, on your phone, and through the APIs. Edit the file in the project and it's picked up next time you open the project.
+          </p>
+          {open && (
+            <pre className="mono" style={{ marginTop: 12, marginBottom: 0, maxHeight: 360, overflow: 'auto', fontSize: 11.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--text-2)', background: 'var(--well)', padding: 12, borderRadius: 10 }}>{p.brief.text}</pre>
+          )}
+        </>
+      ) : (
+        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--muted)' }}>
+          No <span className="mono">AGENTS.md</span> in this folder yet. Put your standing rules and current state there — ownership, branch rules, what's built and what isn't — and every agent will read it on every request, not just the ones running on this computer.
+        </p>
+      )}
+    </section>
+  );
+}
+
 /** Overview card: the Mosslight loading screen — put it in the game folder, preview it, wire it in. */
 function BrandCard({ hub, p }: { hub: Hub; p: P }) {
   const [busy, setBusy] = useState(false);
@@ -236,6 +267,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
   const upNext = p.tasks.filter(x => x.status !== 'done').sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1)).slice(0, 5);
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+      <BriefCard hub={hub} p={p} />
       <StoryCard hub={hub} p={p} />
       <BrandCard hub={hub} p={p} />
       <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>

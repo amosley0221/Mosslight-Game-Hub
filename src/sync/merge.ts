@@ -4,17 +4,38 @@ import { DEMO_USAGE_KEY, isDemoAsset } from '../core/seed';
 /** What goes into the shared store. Settings (theme, API keys, Local/Remote) stay per device. */
 export type SyncDoc = Pick<HubData, 'projects' | 'messages' | 'assets' | 'usageBy' | 'deleted' | 'devices'> & { v: 1 };
 
-const MAX_THREAD = 300;
+/**
+ * Messages kept per thread in the shared document. High enough that real histories are never
+ * trimmed; `fitDoc` lowers it only if a library grows past what one document should carry.
+ */
+export const FULL_THREAD = 5000;
 
-export const toDoc = (d: HubData): SyncDoc => ({
+export const toDoc = (d: HubData, maxThread = FULL_THREAD): SyncDoc => ({
   v: 1,
   projects: d.projects,
   assets: d.assets,
   usageBy: d.usageBy,
   deleted: d.deleted || {},
   devices: d.devices || {},
-  messages: Object.fromEntries(Object.entries(d.messages).map(([k, v]) => [k, v.slice(-MAX_THREAD)])),
+  messages: Object.fromEntries(Object.entries(d.messages).map(([k, v]) => [k, v.slice(-maxThread)])),
 });
+
+/** Biggest shared document we'll push. GitHub's contents API takes far more, but this stays quick. */
+const MAX_DOC = 12 * 1024 * 1024;
+
+/**
+ * The document to upload: whole chat threads, unless the library is so large that the document
+ * would be unwieldy — then the oldest messages are left out of *this upload only*. They stay on
+ * the device that has them, so nothing is deleted.
+ */
+export function fitDoc(d: HubData): { doc: SyncDoc; json: string; trimmedTo?: number } {
+  for (const cap of [FULL_THREAD, 2000, 800, 300]) {
+    const doc = toDoc(d, cap);
+    const json = JSON.stringify(doc);
+    if (json.length <= MAX_DOC || cap === 300) return { doc, json, trimmedTo: cap === FULL_THREAD ? undefined : cap };
+  }
+  throw new Error('unreachable');
+}
 
 /** Last-writer-wins per entity (by `u`), with deletion markers winning over older edits. */
 function mergeById<X extends { id: string; u?: number }>(local: X[], remote: X[], prefix: string, deleted: Record<string, number>): X[] {

@@ -18,21 +18,27 @@ import { installOrLaunch, uploadApk } from '../sync/apk';
 import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
 import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
 import { installKit, kitPrompt } from '../brand/kit';
+import { loadState, readLegacy, saveState } from './storage';
 
-const KEY = 'gdh:state:v3';
 const SKEY = 'gdh:settings:v1';
 
+type SavedData = Partial<HubData> & { usage?: Record<AgentId, Usage> };
+
+function shape(s: SavedData | null): HubData | null {
+  if (!s || !s.projects) return null;
+  return purgeDemoOnce({
+    projects: s.projects.map(norm), messages: s.messages || {}, assets: s.assets || [],
+    usageBy: s.usageBy || (s.usage ? { [deviceId]: s.usage } : {}), deleted: s.deleted || {}, devices: s.devices || {},
+  });
+}
+
+/** First paint: the old localStorage copy if this device still has one, otherwise empty until IndexedDB answers. */
 function loadData(): HubData {
   try {
-    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (s && s.projects) {
-      return purgeDemoOnce({
-        projects: s.projects.map(norm), messages: s.messages || {}, assets: s.assets || [],
-        usageBy: s.usageBy || (s.usage ? { [deviceId]: s.usage } : {}), deleted: s.deleted || {}, devices: s.devices || {},
-      });
-    }
-  } catch { /* first run */ }
-  return emptyData();
+    return shape(readLegacy<SavedData>()) || emptyData();
+  } catch {
+    return emptyData();
+  }
 }
 
 const ZERO: Record<AgentId, Usage> = { grok: { calls: 0, tokens: 0 }, codex: { calls: 0, tokens: 0 }, claude: { calls: 0, tokens: 0 } };
@@ -113,6 +119,10 @@ const kindOfFile = (n: string) => (/\.(apk|aab)$/i.test(n) ? 'android' : /\.html
 const isUrl = (p: string) => /^https?:/i.test(p);
 const slug =(s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 /** "MosslightVillage.exe" → "MosslightVillage" (build names read better without the extension). */
+/** Files a project uses to tell agents how to work on it, best first. */
+const BRIEF_FILES = ['AGENTS.md', 'CLAUDE.md', 'Docs/PROJECT-HANDOFF.md', 'PROJECT-HANDOFF.md', 'docs/PROJECT-HANDOFF.md', '.github/copilot-instructions.md'];
+const BRIEF_PER_FILE = 6000;
+const BRIEF_TOTAL = 9000;
 const stripExt = (n: string) => n.replace(/\.[^.]+$/, '');
 /** A build found deep in the folder, named by its file and the folder it sits in. */
 const buildFrom = (f: { path: string; name: string; folder: string; modified: number }): Build => ({
@@ -201,7 +211,29 @@ export function useHub() {
   const toastTimer = useRef<number>();
   const engineRef = useRef<SyncEngine | null>(null);
 
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* quota */ } }, [data]);
+  // The library lives in IndexedDB. Load it once, then save every change — and if a save ever
+  // fails, say so instead of losing work quietly the way the old localStorage copy could.
+  const hydrated = useRef(false);
+  const saveFailed = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    void loadState<SavedData>()
+      .then(saved => { const d = shape(saved); if (alive && d) setRaw(d); })
+      .catch(() => {})
+      .finally(() => { hydrated.current = true; });
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    void saveState(data).then(
+      () => { saveFailed.current = false; },
+      (e: unknown) => {
+        if (saveFailed.current) return; // one warning per run of bad luck, not one per keystroke
+        saveFailed.current = true;
+        setUi(u => ({ ...u, toast: `Couldn't save to this device: ${String((e as Error)?.message || e)}` }));
+      },
+    );
+  }, [data]);
   useEffect(() => { try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch { /* quota */ } }, [settings]);
 
   const patchUi = useCallback((p: Partial<Ui> | ((u: Ui) => Partial<Ui>)) => setUi(u => ({ ...u, ...(typeof p === 'function' ? p(u) : p) })), []);
@@ -614,6 +646,45 @@ export function useHub() {
       setScanningBuilds(false);
     }
   }, [toast, updProj]);
+
+  // ── Project brief (AGENTS.md and friends) ────────────────────────────────────
+  /**
+   * Reads the project's own instruction files and keeps a trimmed copy on the project, so the
+   * agents that can't see the folder — Grok, anything on the phone, API fallbacks — get the same
+   * standing rules as local Claude Code and Codex, without you maintaining them twice.
+   */
+  const refreshBrief = useCallback(async (pid: string, announce = false) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const root = p && localFolder(p)?.path;
+    if (!isDesktop || !root) { if (announce) toast('This project has no folder on this computer'); return; }
+    const found: { file: string; text: string }[] = [];
+    for (const rel of BRIEF_FILES) {
+      if (found.length >= 2) break;
+      try {
+        const bytes = await readFileBytes(await joinPath(root, ...rel.split('/')), 400_000);
+        const text = new TextDecoder().decode(bytes).trim();
+        if (text) found.push({ file: rel, text: text.slice(0, BRIEF_PER_FILE) });
+      } catch { /* not in this project */ }
+    }
+    if (!found.length) {
+      updProj(pid, q => (q.brief ? { ...q, brief: undefined } : q));
+      if (announce) toast('No AGENTS.md, CLAUDE.md or PROJECT-HANDOFF.md in this folder');
+      return;
+    }
+    const text = found.map(f => `--- ${f.file} ---\n${f.text}`).join('\n\n').slice(0, BRIEF_TOTAL);
+    updProj(pid, q => ({ ...q, brief: { files: found.map(f => f.file), text, ts: now() } }));
+    if (announce) toast(`Loaded ${found.map(f => f.file).join(' + ')} — every agent sees it now`);
+  }, [toast, updProj]);
+
+  // Re-read the brief when a project is opened, so edits to AGENTS.md reach the agents on their own.
+  const openedPid = ui.view === 'project' ? ui.pid : null;
+  useEffect(() => {
+    if (!openedPid || !isDesktop) return;
+    const p = dataRef.current.projects.find(x => x.id === openedPid);
+    if (!p || !localFolder(p)?.path) return;
+    if (p.brief && now() - p.brief.ts < 60_000) return;
+    void refreshBrief(openedPid);
+  }, [openedPid, refreshBrief]);
 
   // ── Brand kit (the Mosslight loading screen) ─────────────────────────────────
   /** Writes the loading screen kit into the game's folder on this computer. */
@@ -1120,7 +1191,7 @@ export function useHub() {
     send, ask, dispatch, attachFiles, removeAttachment, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
-    addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds,
+    addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
