@@ -48,10 +48,31 @@ export interface Project {
   sharedArt?: SharedArt[];
   /** Music written for the game. */
   music?: MusicTrack[];
+  /** Story bible: characters, maps, locations — each entry with its own pictures. */
+  story?: StorySection[];
+  /** Folders (relative to the project folder) the Art tab shows; unset = all of them. */
+  artFolders?: string[];
   /** A just-arrived build worth pointing at. */
   spotlight?: { buildId: string; ts: number };
   /** Last-modified time, used to merge edits from other devices. */
   u?: number;
+}
+
+export interface StoryEntry {
+  id: string;
+  name: string;
+  body?: string;
+  /** Local paths or img: refs. */
+  images: string[];
+  cover?: string;
+  ts: number;
+}
+
+export interface StorySection {
+  id: string;
+  title: string;
+  entries: StoryEntry[];
+  ts: number;
 }
 
 export interface MusicTrack {

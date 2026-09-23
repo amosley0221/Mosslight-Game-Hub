@@ -5,7 +5,8 @@ import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
 import { copyText, isDesktop, openExternal } from '../platform';
 import { RepoCard } from './GitHub';
-import { ArtTab, GuidesTab, useProjectImages } from './Media';
+import { ArtTab, useProjectImages } from './Media';
+import { StoryTab } from './Story';
 import { MusicTab } from './Music';
 import { Dot, Glyph, coverOf } from './common';
 import { useImageSrc } from '../sync/images';
@@ -86,23 +87,23 @@ function ArtPreview({ hub, p }: { hub: Hub; p: P }) {
   );
 }
 
-/** The game's story, editable and draftable by Grok. */
-function Story({ hub, p }: { hub: Hub; p: P }) {
-  const [draft, setDraft] = useState(p.summary || '');
-  const [editing, setEditing] = useState(false);
-  useEffect(() => { if (!editing) setDraft(p.summary || ''); }, [p.summary, editing]);
+/** Overview card: a glance at the story and its sections; editing lives in the Story tab. */
+function StoryCard({ hub, p }: { hub: Hub; p: P }) {
+  const sections = p.story || [];
   return (
     <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
         <h3 className="eyebrow">Story</h3>
-        <div className="row" style={{ gap: 6 }}>
-          <button className="btn-ghost" onClick={() => { if (editing) hub.setSummary(p.id, draft); setEditing(!editing); }}>{editing ? 'Save' : p.summary ? 'Edit' : 'Write'}</button>
-          <button className="btn-ghost" onClick={() => hub.ask(`Write the story summary for ${p.name} — what the game is about, the setting, the player's role and the hook. 150–200 words, plain prose.`, 'grok')}>Draft with Grok</button>
-        </div>
+        <button className="link" onClick={() => hub.patchUi({ tab: 'story' })}>Open Story →</button>
       </div>
-      {editing
-        ? <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)} rows={8} placeholder="What is this game about?" style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.6, resize: 'vertical', color: 'var(--text-2)' }} />
-        : <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: p.summary ? 'var(--text-2)' : 'var(--muted)', whiteSpace: 'pre-wrap', maxWidth: '80ch' }}>{p.summary || 'No story yet. Write one, or ask Grok to draft it from what the project already knows.'}</p>}
+      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: p.summary ? 'var(--text-2)' : 'var(--muted)', maxWidth: '80ch', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden', whiteSpace: 'pre-wrap' }}>
+        {p.summary || 'No story yet — write it, add characters and maps, or keep your play guide here.'}
+      </p>
+      {sections.length > 0 && (
+        <div className="row wrap" style={{ gap: 6, marginTop: 12 }}>
+          {sections.map(s => <button key={s.id} className="chip" style={{ background: 'var(--well)', color: 'var(--text-2)' }} onClick={() => hub.patchUi({ tab: 'story' })}>{s.title} <span className="mono" style={{ fontSize: 10, opacity: .6 }}>{s.entries.length}</span></button>)}
+        </div>
+      )}
     </section>
   );
 }
@@ -113,7 +114,7 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
   const t = tileInfo(p);
   const featured = p.builds.find(b => b.id === p.featuredBuild) || p.builds[0];
   const spot = p.spotlight ? p.builds.find(b => b.id === p.spotlight!.buildId) : undefined;
-  const tabs: [string, string][] = [['overview', 'Overview'], ['tasks', 'Tasks'], ['builds', 'Test builds'], ['art', 'Art'], ['music', 'Music'], ['guides', 'Guides'], ['gdd', 'GDD'], ['engines', 'Stack'], ...(settings.devMode ? [['dev', 'Dev'] as [string, string]] : []), ['activity', 'Activity'], ['usage', 'Usage']];
+  const tabs: [string, string][] = [['overview', 'Overview'], ['tasks', 'Tasks'], ['builds', 'Test builds'], ['story', 'Story'], ['art', 'Art'], ['music', 'Music'], ['gdd', 'GDD'], ['engines', 'Stack'], ...(settings.devMode ? [['dev', 'Dev'] as [string, string]] : []), ['activity', 'Activity'], ['usage', 'Usage']];
   const tab = tabs.some(x => x[0] === ui.tab) ? ui.tab : 'overview';
 
   return (
@@ -175,7 +176,7 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
       {tab === 'builds' && <Builds hub={hub} p={p} />}
       {tab === 'art' && <ArtTab hub={hub} p={p} />}
       {tab === 'music' && <MusicTab hub={hub} p={p} />}
-      {tab === 'guides' && <GuidesTab hub={hub} p={p} />}
+      {tab === 'story' && <StoryTab hub={hub} p={p} />}
       {tab === 'gdd' && <Gdd hub={hub} p={p} />}
       {tab === 'engines' && <Stack hub={hub} p={p} />}
       {tab === 'dev' && <Dev hub={hub} p={p} />}
@@ -199,7 +200,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
   const upNext = p.tasks.filter(x => x.status !== 'done').sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1)).slice(0, 5);
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
-      <Story hub={hub} p={p} />
+      <StoryCard hub={hub} p={p} />
       <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
         <h3 className="eyebrow" style={{ marginBottom: 12 }}>GitHub</h3>
         <RepoCard hub={hub} p={p} />

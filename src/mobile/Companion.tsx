@@ -7,7 +7,8 @@ import { Glyph, ImageSlot, Toast, asset, coverOf } from '../ui/common';
 import { ChatIntro, Composer, MessageView } from '../ui/Chat';
 import { AddMenu, launchProps, tileInfo } from '../ui/Library';
 import { RepoCard, RepoPicker } from '../ui/GitHub';
-import { ArtTab, GuidesTab } from '../ui/Media';
+import { ArtTab } from '../ui/Media';
+import { StoryTab } from '../ui/Story';
 import { MusicTab, PlayerBar } from '../ui/Music';
 
 const section = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 };
@@ -135,12 +136,10 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
                 ))}
               </div>
             </section>
-            {proj.summary && (
-              <section>
-                <div style={section}>Story</div>
-                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{proj.summary}</p>
-              </section>
-            )}
+            <section>
+              <div style={section}>Story</div>
+              <StoryTab hub={hub} p={proj} />
+            </section>
             <section>
               <div style={section}>Art</div>
               <ArtTab hub={hub} p={proj} />
@@ -148,10 +147,6 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
             <section>
               <div style={section}>Music</div>
               <MusicTab hub={hub} p={proj} />
-            </section>
-            <section>
-              <div style={section}>Guides</div>
-              <GuidesTab hub={hub} p={proj} />
             </section>
             <section>
               <div style={section}>Chat</div>

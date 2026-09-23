@@ -3,7 +3,7 @@ import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from '.
 import { planTeam, respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
-import type { AgentId, AgentMode, Asset, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, Usage } from './types';
+import type { AgentId, AgentMode, Asset, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, StoryEntry, StorySection, Usage } from './types';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
   cancelAgentRun, copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
@@ -776,6 +776,51 @@ export function useHub() {
     toast(group ? `${group} is no longer shared` : 'Shared art removed');
   }, [updProj, toast]);
 
+  // ── Story bible (characters, maps, locations…) ───────────────────────────────
+  const updStory = useCallback((pid: string, fn: (s: StorySection[]) => StorySection[]) => updProj(pid, p => ({ ...p, story: fn(p.story || []) })), [updProj]);
+  const updSection = useCallback((pid: string, sid: string, fn: (s: StorySection) => StorySection) => updStory(pid, list => list.map(s => (s.id === sid ? fn(s) : s))), [updStory]);
+
+  const addSection = useCallback((pid: string, title: string) => {
+    const id = uid();
+    updStory(pid, list => [...list, { id, title, entries: [], ts: now() }]);
+    return id;
+  }, [updStory]);
+  const renameSection = useCallback((pid: string, sid: string, title: string) => updSection(pid, sid, s => ({ ...s, title })), [updSection]);
+  const removeSection = useCallback((pid: string, sid: string) => updStory(pid, list => list.filter(s => s.id !== sid)), [updStory]);
+
+  const addEntry = useCallback((pid: string, sid: string, name: string) => {
+    const id = uid();
+    updSection(pid, sid, s => ({ ...s, entries: [...s.entries, { id, name, images: [], ts: now() }] }));
+    return id;
+  }, [updSection]);
+  const updEntry = useCallback((pid: string, sid: string, eid: string, patch: Partial<StoryEntry>) => updSection(pid, sid, s => ({ ...s, entries: s.entries.map(e => (e.id === eid ? { ...e, ...patch } : e)) })), [updSection]);
+  const removeEntry = useCallback((pid: string, sid: string, eid: string) => updSection(pid, sid, s => ({ ...s, entries: s.entries.filter(e => e.id !== eid) })), [updSection]);
+
+  /**
+   * Adds pictures to a story entry. Local files are copied into sync (downscaled) so the
+   * character/map shows on every device — a story bible is small, so this happens automatically.
+   */
+  const addEntryImages = useCallback(async (pid: string, sid: string, eid: string, srcs: string[]) => {
+    if (!srcs.length) return;
+    updEntry(pid, sid, eid, { images: uniq([...(dataRef.current.projects.find(p => p.id === pid)?.story?.find(s => s.id === sid)?.entries.find(e => e.id === eid)?.images || []), ...srcs]) });
+    if (!engineRef.current || !isDesktop) return;
+    const local = srcs.filter(s => !s.startsWith('img:') && !isUrl(s));
+    if (!local.length) return;
+    setSharing({ done: 0, total: local.length });
+    for (let i = 0; i < local.length; i++) {
+      try {
+        const blob = await (await fetch(fileSrc(local[i])!)).blob();
+        const { bytes } = await resizeImage(blob, 1600);
+        const ref = await uploadImage(bytes);
+        if (ref) updEntry(pid, sid, eid, { images: uniq((dataRef.current.projects.find(p => p.id === pid)?.story?.find(s => s.id === sid)?.entries.find(e => e.id === eid)?.images || []).map(x => (x === local[i] ? ref : x))) });
+      } catch { /* keep the local path */ }
+      setSharing({ done: i + 1, total: local.length });
+    }
+    setSharing(null);
+  }, [updEntry]);
+
+  const setArtFolders = useCallback((pid: string, folders: string[] | undefined) => updProj(pid, p => ({ ...p, artFolders: folders })), [updProj]);
+
   /** Copies a song into sync so it plays on the phone too. */
   const shareTrack = useCallback(async (pid: string, t: { id: string; path: string; name: string }) => {
     if (!engineRef.current) return toast('Turn on sync in Settings first');
@@ -959,6 +1004,7 @@ export function useHub() {
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
+    addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
     busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,
