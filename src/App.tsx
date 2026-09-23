@@ -3,6 +3,7 @@ import { App as CapApp } from '@capacitor/app';
 import { parsePairingLink } from './sync/engine';
 import { useHub } from './core/store';
 import { platform } from './platform';
+import { anyRunning } from './core/runs';
 import { Companion } from './mobile/Companion';
 import { Assets } from './ui/Assets';
 import { ChatRail } from './ui/Chat';
@@ -35,6 +36,24 @@ export default function App() {
     const h = CapApp.addListener('appUrlOpen', e => pair(e.url));
     return () => { void h.then(x => x.remove()); };
   }, [connectSync]);
+
+  // Closing the window kills whatever the local CLIs are running, so ask first.
+  useEffect(() => {
+    if (platform === 'android') return;
+    const warn = (e: BeforeUnloadEvent) => { if (anyRunning()) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', warn);
+    let un: (() => void) | undefined;
+    if (platform === 'desktop') {
+      void import('@tauri-apps/api/window').then(({ getCurrentWindow }) =>
+        getCurrentWindow().onCloseRequested(async e => {
+          if (!anyRunning()) return;
+          const ok = window.confirm('An agent is still working. Closing Mosslight stops it — files it already wrote are kept, the reply is lost.\n\nClose anyway?');
+          if (!ok) e.preventDefault();
+        }).then(f => { un = f; }),
+      ).catch(() => {});
+    }
+    return () => { window.removeEventListener('beforeunload', warn); un?.(); };
+  }, []);
 
   // ⌘K / Ctrl+K focuses chat, ⌘, / Ctrl+, opens Settings.
   useEffect(() => {

@@ -19,6 +19,7 @@ import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
 import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
 import { installKit, kitPrompt } from '../brand/kit';
 import { loadState, readLegacy, saveState } from './storage';
+import { anyRunning, beginRun, endRun, startRun } from './runs';
 
 const SKEY = 'gdh:settings:v1';
 
@@ -311,15 +312,19 @@ export function useHub() {
     const id = uid();
     const busyAhead = !!queues.current[agent];
     push(key, { id, type: 'agent', agent, text: '', pending: true, queued: busyAhead, route: routeLabel, userText: text });
+    // Teammates are told about this while it runs, so nobody takes the same job twice.
+    beginRun({ id, agent, key, prompt: text, queued: busyAhead, at: now() });
 
     const run = async (): Promise<Reply & { messageId: string }> => {
       if (skipped.current.delete(id)) {
+        endRun(id);
         updAgentMsg(key, id, { pending: false, queued: false, stopped: true, text: '(cancelled before it started)' });
         return { text: '', tokens: 0, stopped: true, messageId: id };
       }
       const ctrl = new AbortController();
       const runId = uid() + uid();
       liveRuns.current.set(id, { ctrl, runId });
+      startRun(id);
       setRunning(1);
       updAgentMsg(key, id, { queued: false, startedAt: now(), runId, runDevice: deviceId, steps: [] });
 
@@ -347,6 +352,7 @@ export function useHub() {
       } finally {
         window.clearTimeout(timer);
         liveRuns.current.delete(id);
+        endRun(id);
         setRunning(-1);
       }
       updAgentMsg(key, id, {
@@ -382,7 +388,7 @@ export function useHub() {
     setData(d => {
       let changed = false;
       const messages = Object.fromEntries(Object.entries(d.messages).map(([k, list]) => [k, list.map(m => {
-        if (m.type === 'agent' && m.pending && (!m.runDevice || m.runDevice === deviceId)) { changed = true; return { ...m, pending: false, queued: false, stopped: true, text: (m.text ? m.text + '\n\n' : '') + '(interrupted — Mosslight was closed while this was running)' }; }
+        if (m.type === 'agent' && m.pending && (!m.runDevice || m.runDevice === deviceId)) { changed = true; return { ...m, pending: false, queued: false, stopped: true, interrupted: true, text: (m.text ? m.text + '\n\n' : '') + '(interrupted — Mosslight was closed while this was running)' }; }
         return m;
       })]));
       return changed ? { ...d, messages } : d;

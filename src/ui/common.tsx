@@ -3,6 +3,7 @@ import { AGENTS } from '../core/constants';
 import type { AgentId, Project } from '../core/types';
 import { useImageSrc } from '../sync/images';
 import { checkForUpdate, type UpdateInfo } from '../platform/updates';
+import { anyRunning } from '../core/runs';
 
 export const asset = (name: string) => `./assets/${name}`;
 
@@ -125,7 +126,16 @@ export function UpdateBanner({ u, onDismiss, onNotes }: { u: UpdateInfo; onDismi
       <span style={{ flex: 1 }} />
       {pct !== null ? <span className="mono" style={{ fontSize: 12 }}>Updating… {pct}%</span> : (
         <>
-          <button className="btn-accent" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => { setPct(0); void u.install(setPct).catch(() => setPct(null)); }}>Update now</button>
+          <button
+            className="btn-accent"
+            style={{ padding: '6px 12px', fontSize: 12 }}
+            // Updating restarts the app, which kills anything an agent is running.
+            onClick={() => {
+              if (anyRunning() && !window.confirm('An agent is working right now. Updating restarts Mosslight and stops it — files it already wrote are kept, the reply is lost.\n\nUpdate anyway?')) return;
+              setPct(0);
+              void u.install(setPct).catch(() => setPct(null));
+            }}
+          >Update now</button>
           <button className="x" onClick={onDismiss} title="Later">×</button>
         </>
       )}

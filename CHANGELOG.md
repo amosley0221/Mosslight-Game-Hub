@@ -3,6 +3,14 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.13.0] - 2026-09-23
+
+### Added
+- **Agents can see what their teammates are working on.** Every request now carries a short list of the other agents' live and queued work on that project, with the instruction not to repeat it. Codex stops handing Claude a job Claude is already running, and says it's in progress instead.
+- **The team lead sees the actual prompts.** When planning, the lead gets up to 700 characters of each in-flight request, so it can recognise the job it was about to assign — and either leave that step out or make its step depend on the running one.
+- **Resume.** A run cut short by Mosslight closing now shows **Resume** next to it, which re-sends the original request to the same agent. No retyping, no digging through Reroute.
+- **A warning before you stop live work.** Closing the window or hitting **Update now** while an agent is working asks first, and says plainly what survives: files already written to disk are kept, the unfinished reply is lost.
+
 ## [0.12.2] - 2026-09-23
 
 ### Fixed

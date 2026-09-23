@@ -97,6 +97,14 @@ function RunProgress({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; 
       <button onClick={() => setOpen(!open)} className="mono" style={{ background: 'none', border: 0, padding: 0, fontSize: 10.5, color: 'var(--muted)' }}>
         {m.stopped ? 'Stopped' : 'Worked'}{m.startedAt && m.finishedAt ? ` for ${fmtDuration(m.finishedAt - m.startedAt)}` : ''}{steps.length ? ` · ${steps.length} step${steps.length === 1 ? '' : 's'} ${open ? '▴' : '▾'}` : ''}
       </button>
+      {m.interrupted && m.userText && (
+        <button
+          onClick={() => void hub.dispatch(chatKey, m.agent, m.userText!, `resumed · ${a.name}`)}
+          style={{ ...pillBtn(a.color, false, compact), marginLeft: 8, padding: '3px 10px', fontSize: 11, minHeight: 0 }}
+        >
+          Resume
+        </button>
+      )}
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4, paddingLeft: 8, borderLeft: '2px solid var(--line-2)' }}>
           {steps.map((s, i) => <span key={i} className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', wordBreak: 'break-word' }}>{s}</span>)}

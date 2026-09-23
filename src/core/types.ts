@@ -180,6 +180,8 @@ export type Message = { ts?: number; u?: number } & (
       runId?: string;
       runDevice?: string;
       stopped?: boolean;
+      /** Cut short because Mosslight closed, rather than by you — offers Resume. */
+      interrupted?: boolean;
     }
   | { id: string; type: 'handoff'; from: AgentId; to: AgentId; reason: string; status: 'pending' | 'approved' | 'declined'; userText: string; prompt?: string; auto?: boolean }
   | { id: string; type: 'plan'; lead: AgentId; summary: string; steps: PlanStep[]; status: 'drafting' | 'pending' | 'running' | 'done' | 'declined' | 'failed'; userText: string; error?: string }
