@@ -68,7 +68,8 @@ export function purgeDemoOnce(d: HubData): HubData {
 export const defaultSettings = (): Settings => ({
   theme: 'dark',
   devMode: true,
-  remote: { claude: true, codex: true, grok: true },
+  mode: { claude: 'auto', codex: 'auto', grok: 'remote' },
+  localModels: {},
   models: { ...DEFAULT_MODELS },
   device: { name: '', paired: false },
   tools: {},

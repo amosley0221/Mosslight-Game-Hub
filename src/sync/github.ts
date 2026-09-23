@@ -1,4 +1,4 @@
-import { httpFetch } from '../platform';
+import { httpFetch, platform } from '../platform';
 
 /** Minimal GitHub REST client used as the sync store (a private repo per user). */
 export class GitHubStore {
@@ -25,7 +25,14 @@ export class GitHubStore {
 
   /** Reads a file. `etag` makes an unchanged poll a free 304. */
   async read(path: string, etag?: string): Promise<{ status: 'same' } | { status: 'missing' } | { status: 'ok'; sha: string; text: string; etag?: string }> {
-    const r = await httpFetch(this.api(`/contents/${path}`), { headers: this.headers(etag ? { 'If-None-Match': etag } : {}), cache: 'no-store' });
+    let r: Response;
+    if (platform === 'android') {
+      // Android's native HTTP bridge can't handle a 304 reply ("Failed to fetch"), so no
+      // conditional request there — and a cache-buster so the WebView never serves a stale copy.
+      r = await httpFetch(this.api(`/contents/${path}?_=${Date.now()}`), { headers: this.headers() });
+    } else {
+      r = await httpFetch(this.api(`/contents/${path}`), { headers: this.headers(etag ? { 'If-None-Match': etag } : {}), cache: 'no-store' });
+    }
     if (r.status === 304) return { status: 'same' };
     if (r.status === 404) return { status: 'missing' };
     if (!r.ok) throw new Error(`Sync read failed (${r.status})`);

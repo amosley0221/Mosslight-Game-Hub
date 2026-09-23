@@ -1,4 +1,5 @@
 export type AgentId = 'grok' | 'codex' | 'claude';
+export type AgentMode = 'auto' | 'local' | 'remote';
 export type Platform = 'windows' | 'mac' | 'android' | 'web';
 export type TaskStatus = 'todo' | 'doing' | 'done';
 export type BuildKind = 'desktop' | 'web' | 'android';
@@ -70,8 +71,14 @@ export interface Usage { calls: number; tokens: number }
 export interface Settings {
   theme: 'light' | 'dark';
   devMode: boolean;
-  remote: Record<AgentId, boolean>;
+  /** auto = local CLI first (desktop), API if the CLI is missing or fails. Grok is always remote. */
+  mode: Record<AgentId, AgentMode>;
+  /** Legacy (0.1–0.3) Local/Remote switch, migrated into `mode`. */
+  remote?: Record<AgentId, boolean>;
+  /** API model per agent. */
   models: Record<AgentId, string> & { grokImage: string };
+  /** Model passed to the local CLI; empty = the CLI's own default. */
+  localModels: Partial<Record<AgentId, string>>;
   device: { name: string; paired: boolean };
   tools: Record<string, boolean>;
   libraryDir?: string;

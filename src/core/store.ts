@@ -3,7 +3,7 @@ import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from '.
 import { respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
-import type { AgentId, Asset, Build, HubData, Message, Platform, Project, Settings, Usage } from './types';
+import type { AgentId, AgentMode, Asset, Build, HubData, Message, Platform, Project, Settings, Usage } from './types';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
   copyFile, getDesktopDir, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
@@ -77,7 +77,12 @@ function loadSettings(): Settings {
   const d = defaultSettings();
   try {
     const s = JSON.parse(localStorage.getItem(SKEY) || 'null');
-    if (s) return { ...d, ...s, remote: { ...d.remote, ...s.remote }, models: { ...d.models, ...s.models }, tools: { ...d.tools, ...s.tools } };
+    if (s) {
+      // Before 0.4 there was only a Local/Remote switch; Remote (the default) becomes Auto = local first.
+      const legacy = (a: AgentId): AgentMode => (s.remote && s.remote[a] === false ? 'local' : 'auto');
+      const mode = s.mode || { claude: legacy('claude'), codex: legacy('codex'), grok: 'remote' };
+      return { ...d, ...s, mode: { ...d.mode, ...mode, grok: 'remote' }, models: { ...d.models, ...s.models }, localModels: { ...(s.localModels || {}) }, tools: { ...d.tools, ...s.tools } };
+    }
   } catch { /* defaults */ }
   return d;
 }
@@ -211,7 +216,7 @@ export function useHub() {
     }
     patchUi({ busy: false });
     setData(d => {
-      const messages = { ...d.messages, [key]: (d.messages[key] || []).map(m => (m.id === id ? { ...m, text: res.text, pending: false, error: res.error || res.offline } as Message : m)) };
+      const messages = { ...d.messages, [key]: (d.messages[key] || []).map(m => (m.id === id ? { ...m, text: res.text, pending: false, error: res.error || res.offline, route: res.via ? (m as { route?: string }).route + ' · ' + res.via : (m as { route?: string }).route } as Message : m)) };
       const mine = { ...ZERO, ...(d.usageBy[deviceId] || {}) };
       const usageBy = res.offline ? d.usageBy : { ...d.usageBy, [deviceId]: { ...mine, [agent]: { calls: mine[agent].calls + 1, tokens: mine[agent].tokens + res.tokens } } };
       const projects = !proj || res.offline ? d.projects : d.projects.map(p => {

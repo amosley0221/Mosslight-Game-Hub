@@ -3,6 +3,22 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.4.0] - 2026-09-23
+
+### Added
+- **Auto mode for Claude and Codex (the new default on desktop).** Mosslight uses your local Claude Code or Codex CLI when it's installed on the computer, and falls back to the API if the tool is missing or a run fails.
+  - Each agent has an **Auto / Local / API** selector in ⚙ Settings → Agents, with a "Using: …" line showing what it will actually use.
+  - Existing installs that were on Remote switch to Auto.
+- Every reply is labelled **local** or **api**, so you can see which route answered. If a local run fails and the API answers instead, the reply says why.
+- **Model picker for every agent.** **Load models** lists the models your API key can use, straight from Anthropic, OpenAI or xAI, so new models appear without an app update. **Custom…** accepts any exact model id.
+  - Grok's image model has its own picker.
+  - The local tools can use "CLI default" (your plan's model) or a model you choose.
+- The Integrations page now shows whether **Claude Code (CLI)** and **Codex CLI** are installed on this computer.
+
+### Fixed
+- **Android: sync showed "Failed to fetch" after pairing.** The phone's repeated sync checks used a GitHub shortcut that Android's HTTP layer can't handle. The phone now does plain checks, with a cache-buster so it never reads a stale copy.
+- If the phone genuinely can't reach GitHub, the status now says so and retries automatically.
+
 ## [0.3.0] - 2026-09-22
 
 ### Changed

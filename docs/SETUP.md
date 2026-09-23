@@ -70,9 +70,23 @@ Builds that can't run on the device you're holding are dimmed. Tap one to see wh
 
 ## 2. Setting up the agents
 
-Each agent needs either an API key (**Remote**) or a command-line tool installed on your computer (**Local**, desktop only). Without either, it replies with a short note saying what to set up, and changes nothing in your project.
+Each agent reaches its AI through an API key, or (Claude and Codex on desktop) through a command-line tool installed on your computer. Without either, it replies with a short note saying what to set up, and changes nothing in your project.
 
-Keys are **not synced**, so add them on each device you want to chat from. The phone always uses Remote.
+**How Claude and Codex connect on desktop:** each has an **Auto / Local / API** selector in ⚙ Settings → Agents.
+
+| Mode | What it does |
+|---|---|
+| **Auto** (default) | Uses the local tool (`claude` or `codex`) when it's installed on this computer. Falls back to the API if the tool is missing or a run fails. |
+| **Local** | Uses only the local tool. |
+| **API** | Uses only the API key. |
+
+Every reply is labelled **local** or **api** next to the agent's name, so you can see which was used. The Integrations page shows whether Claude Code and the Codex CLI were detected. The phone always uses the APIs.
+
+The **Claude and Codex desktop apps can't be used**. They don't accept messages from other programs, so Local and Auto need the command-line tools below.
+
+**Choosing models:** click **Load models** next to a model box to list the models your API key can use, straight from the provider, and pick one. **Custom…** accepts any exact model id. The Local row can stay on "CLI default" (your plan's model) or name a model to pass to the tool.
+
+Keys are **not synced**, so add them on each device you want to chat from.
 
 ### Grok (ideas, story, concept art): xAI API
 
@@ -82,14 +96,14 @@ Keys are **not synced**, so add them on each device you want to chat from. The p
 4. In Mosslight: **⚙ Settings → Agents → Grok → Add API key**, paste the key, and click Save.
 5. Test it: open a project and type *"Concept art for the main character"*. Grok replies, and up to two generated images appear in **Concept art**. They are also saved in the project's `concept/` folder on desktop, and synced to your other devices.
 
-The models are set in the Grok row: `grok-4` for chat and `grok-2-image` for images. If xAI renames a model, type the new name there.
+Grok's chat and image models are picked in its Settings row (Load models lists what your xAI key can use).
 
 ### Claude (code and systems)
 
 **Option A: Remote, using the Anthropic API.** Works on desktop and phone.
 1. Go to **https://console.anthropic.com**, then **Settings → API Keys → Create Key**. Add credits under **Billing**.
 2. In Mosslight: **⚙ Settings → Agents → Claude → Add API key**, then paste the key (it starts with `sk-ant-`).
-3. The model defaults to `claude-opus-5`. You can change it in the Claude row, for example to `claude-sonnet-5` for cheaper, faster replies.
+3. The API model defaults to `claude-opus-5`. Use **Load models** in the Claude row to pick a different one.
 
 **Option B: Local, using Claude Code on your computer.** This works inside your project folder and can edit your code.
 1. Install Claude Code:
@@ -97,7 +111,7 @@ The models are set in the Grok row: `grok-4` for chat and `grok-2-image` for ima
    - **macOS**: `curl -fsSL https://claude.ai/install.sh | bash`
    - or, with Node.js installed: `npm install -g @anthropic-ai/claude-code`
 2. Run `claude` once in a terminal and sign in (with a Claude Pro/Max plan or an API account).
-3. In Mosslight: **⚙ Settings → Agents → Claude**. Turn the switch **off** so it reads **Local**.
+3. In Mosslight, leave Claude on **Auto** (or choose **Local**). Claude Code is detected automatically.
 4. Open a project with **Open local folder**. Claude then runs inside that folder.
 
 ### Codex (visual design and test builds)
@@ -105,12 +119,12 @@ The models are set in the Grok row: `grok-4` for chat and `grok-2-image` for ima
 **Option A: Remote, using the OpenAI API.** Works on desktop and phone. Good for design direction; it can't build your game.
 1. Go to **https://platform.openai.com/api-keys → Create new secret key**, and add billing credits.
 2. In Mosslight: **⚙ Settings → Agents → Codex → Add API key**, then paste the key (it starts with `sk-`).
-3. The model defaults to `gpt-5-codex`. If OpenAI rejects it, type a model your account lists into the Codex row.
+3. Use **Load models** in the Codex row to pick the model you want from the list your OpenAI account offers.
 
 **Option B: Local, using the Codex CLI.** This is the one that actually packages test builds.
 1. Install Node.js (LTS) from https://nodejs.org, then run: `npm install -g @openai/codex`
 2. Run `codex` once in a terminal and sign in with your ChatGPT account (or an API key).
-3. In Mosslight: **⚙ Settings → Agents → Codex**. Turn the switch **off** so it reads **Local**.
+3. In Mosslight, leave Codex on **Auto** (or choose **Local**). The Codex CLI is detected automatically.
 4. Open your project with **Open local folder**, then ask *"Package a fresh test build and put a shortcut on my desktop."* Codex works in the project folder.
    - When it finishes, the build appears under **Test builds**. It's registered automatically, and new shortcuts on your Desktop or in the project folder are also picked up within about 15 seconds.
    - If it's an Android APK, it's uploaded for your phone.

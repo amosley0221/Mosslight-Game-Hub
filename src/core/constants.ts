@@ -55,6 +55,8 @@ export const TOOLS: Tool[] = [
   { id: 'audacity', name: 'Audacity', cat: 'Audio', depth: 'launch', caps: ['Open with file'], how: 'Process launch' },
   { id: 'adb', name: 'Android device bridge', cat: 'Device', depth: 'deep', caps: ['Install APK', 'Launch on device', 'Logcat stream'], how: 'adb over USB / Wi-Fi' },
   { id: 'git', name: 'Git / Perforce', cat: 'Source', depth: 'deep', caps: ['Commit per agent task', 'Branch per feature', 'Diff in Dev tab'], how: 'git CLI · p4' },
+  { id: 'claude', name: 'Claude Code (CLI)', cat: 'Agent · local', depth: 'deep', caps: ['Claude in Auto/Local mode', 'Works in the project folder', 'Uses your Claude plan'], how: 'claude -p (install: claude.ai/install)' },
+  { id: 'codex', name: 'Codex CLI', cat: 'Agent · local', depth: 'deep', caps: ['Codex in Auto/Local mode', 'Packages test builds', 'Uses your ChatGPT plan'], how: 'codex exec (npm i -g @openai/codex)' },
 ];
 export const DEPTH: Record<Depth, { label: string; hint: string }> = {
   deep: { label: 'Deep', hint: 'Open, build, run from the hub' },

@@ -2,12 +2,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { AGENTS, engineName } from './constants';
 import { parseReply } from './router';
 import type { AgentId, AgentResult, Project, Settings } from './types';
-import { getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgentCli, saveBytes } from '../platform';
+import { detectTools, getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgentCli, saveBytes } from '../platform';
 import { localFolder } from '../sync/device';
 import { uploadImage } from '../sync/images';
 
 /** `offline`: the agent isn't configured on this device, so nothing was sent or counted. */
-export type Reply = AgentResult & { tokens: number; offline?: boolean };
+export type Reply = AgentResult & { tokens: number; offline?: boolean; via?: string };
 
 /** API key names stored in the keychain, per agent. */
 export const AGENT_KEY: Record<AgentId, { key: string; label: string; url: string }> = {
@@ -88,22 +88,6 @@ async function callOpenAiCompatible(url: string, key: string, model: string, sys
   return { text: String(data.choices?.[0]?.message?.content ?? ''), tokens: Number(data.usage?.total_tokens) || estTokens(system, text) };
 }
 
-async function callClaudeCli(system: string, text: string, cwd?: string) {
-  const raw = await runAgentCli('claude', ['-p', '--output-format', 'json', '--append-system-prompt', system], text, cwd);
-  try {
-    const j = JSON.parse(raw);
-    const u = j.usage || {};
-    return { text: String(j.result ?? ''), tokens: (u.input_tokens || 0) + (u.output_tokens || 0) || estTokens(text, String(j.result ?? '')) };
-  } catch {
-    return { text: raw, tokens: estTokens(text, raw) };
-  }
-}
-
-async function callCodexCli(system: string, text: string, cwd?: string) {
-  const prompt = `${system}\n\n---\n\n${text}`;
-  const raw = await runAgentCli('codex', ['exec', '--skip-git-repo-check', prompt], '', cwd);
-  return { text: raw.trim(), tokens: estTokens(prompt, raw) };
-}
 
 /** Generate images for Grok's ART: lines and save them into <project>/concept/ (or ~/Mosslight/Images). */
 async function renderArt(key: string, model: string, proj: Project, art: NonNullable<AgentResult['art']>) {
@@ -131,32 +115,119 @@ async function renderArt(key: string, model: string, proj: Project, art: NonNull
   }
 }
 
+
+// ── Local CLIs (desktop) ───────────────────────────────────────────────────────
+
+async function callClaudeCli(system: string, text: string, cwd?: string, model?: string) {
+  const args = ['-p', '--output-format', 'json', '--append-system-prompt', system, ...(model ? ['--model', model] : [])];
+  const raw = await runAgentCli('claude', args, text, cwd);
+  try {
+    const j = JSON.parse(raw);
+    if (j.is_error) throw new Error(String(j.result || 'Claude Code returned an error'));
+    const u = j.usage || {};
+    return { text: String(j.result ?? ''), tokens: (u.input_tokens || 0) + (u.output_tokens || 0) || estTokens(text, String(j.result ?? '')) };
+  } catch (e) {
+    if (e instanceof SyntaxError) return { text: raw, tokens: estTokens(text, raw) };
+    throw e;
+  }
+}
+
+async function callCodexCli(system: string, text: string, cwd?: string, model?: string) {
+  const prompt = `${system}\n\n---\n\n${text}`;
+  const raw = await runAgentCli('codex', ['exec', '--skip-git-repo-check', ...(model ? ['-m', model] : []), prompt], '', cwd);
+  return { text: raw.trim(), tokens: estTokens(prompt, raw) };
+}
+
+/** Which local CLIs are installed on this computer (cached; re-checked every minute). */
+let cliCache: { at: number; tools: Record<string, boolean> } | null = null;
+export async function localClis(force = false): Promise<Record<'claude' | 'codex', boolean>> {
+  if (!isDesktop) return { claude: false, codex: false };
+  if (force || !cliCache || Date.now() - cliCache.at > 60_000) {
+    const d = await detectTools().catch(() => ({} as Record<string, { installed: boolean }>));
+    cliCache = { at: Date.now(), tools: { claude: !!d.claude?.installed, codex: !!d.codex?.installed } };
+  }
+  return cliCache.tools as Record<'claude' | 'codex', boolean>;
+}
+
+// ── Model lists (for the Settings picker) ─────────────────────────────────────
+
+/** Models this API key can use, straight from the provider. */
+export async function listModels(agent: AgentId): Promise<string[]> {
+  const key = await getSecret(AGENT_KEY[agent].key);
+  if (!key) throw new Error(`Add an ${AGENT_KEY[agent].label} first`);
+  if (agent === 'claude') {
+    const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, fetch: httpFetch });
+    const ids: string[] = [];
+    for await (const m of client.models.list()) ids.push(m.id);
+    return ids;
+  }
+  const base = agent === 'codex' ? 'https://api.openai.com/v1' : 'https://api.x.ai/v1';
+  const get = async (path: string) => {
+    const r = await httpFetch(base + path, { headers: { Authorization: `Bearer ${key}` } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error?.message || `HTTP ${r.status}`);
+    return j;
+  };
+  const j = await get('/models');
+  const ids: string[] = (j.data || j.models || []).map((m: { id: string }) => m.id);
+  if (agent === 'grok') {
+    const img = await get('/image-generation-models').catch(() => ({ models: [] }));
+    ids.push(...(img.models || img.data || []).map((m: { id: string }) => m.id));
+  }
+  // OpenAI lists embeddings, audio, moderation… keep the chat/coding ones.
+  const chat = agent === 'codex' ? ids.filter(id => /^(gpt|o\d|codex|chatgpt)/i.test(id) && !/(audio|realtime|transcribe|tts|image|embedding|search|moderation)/i.test(id)) : ids;
+  return [...new Set(chat)].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+}
+
 // ── Entry point ────────────────────────────────────────────────────────────────
 
+async function callApi(agent: AgentId, key: string, model: string, system: string, text: string) {
+  if (agent === 'claude') return callClaudeApi(key, model, system, text);
+  if (agent === 'codex') return callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text);
+  return callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text);
+}
+
+/**
+ * Picks how to reach the agent:
+ *  - Grok: always the xAI API.
+ *  - Auto (default for Claude/Codex): the local CLI when it's installed on this computer,
+ *    falling back to the API if it's missing or the local run fails.
+ *  - Local: only the CLI.  Remote: only the API.
+ */
 export async function respond(agent: AgentId, text: string, proj: Project | null, settings: Settings): Promise<Reply> {
   const system = systemPrompt(agent, proj);
   const short = shortOf(text);
   const cwd = proj ? localFolder(proj)?.path : undefined;
-  const useLocal = isDesktop && !settings.remote[agent] && agent !== 'grok';
+  const mode = agent === 'grok' || !isDesktop ? 'remote' : settings.mode?.[agent] || 'auto';
   const key = await getSecret(AGENT_KEY[agent].key);
+  const cliName = agent === 'claude' ? 'Claude Code' : 'Codex CLI';
   let live: { text: string; tokens: number } | null = null;
+  let via = '';
+  let fallbackNote = '';
 
-  if (useLocal) {
-    live = agent === 'claude' ? await callClaudeCli(system, text, cwd) : await callCodexCli(system, text, cwd);
-  } else if (key) {
-    const model = settings.models[agent];
-    if (agent === 'claude') live = await callClaudeApi(key, model, system, text);
-    else if (agent === 'codex') live = await callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text);
-    else live = await callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text);
+  if (mode === 'local' || (mode === 'auto' && (await localClis())[agent as 'claude' | 'codex'])) {
+    const lm = settings.localModels?.[agent] || undefined;
+    try {
+      live = agent === 'claude' ? await callClaudeCli(system, text, cwd, lm) : await callCodexCli(system, text, cwd, lm);
+      via = 'local';
+    } catch (e) {
+      if (mode === 'local' || !key) throw e;
+      fallbackNote = `${cliName} failed (${String((e as Error)?.message || e).slice(0, 140)}) — answered with the API instead.`;
+    }
+  }
+  if (!live && key && mode !== 'local') {
+    live = await callApi(agent, key, settings.models[agent], system, text);
+    via = 'api';
   }
 
   if (!live) {
     // No fake replies: say what's missing and change nothing in the project.
-    const how = agent === 'grok' ? 'add an xAI API key' : isDesktop ? `add an ${AGENT_KEY[agent].label} or switch ${AGENTS[agent].name} to Local` : `add an ${AGENT_KEY[agent].label}`;
+    const how = agent === 'grok' || !isDesktop ? `add an ${AGENT_KEY[agent].label}` : mode === 'local' ? `install ${cliName} (or switch to Auto and add an ${AGENT_KEY[agent].label})` : `install ${cliName} or add an ${AGENT_KEY[agent].label}`;
     return { text: `${AGENTS[agent].name} isn't set up on this device yet — ${how} in ⚙ Settings → Agents, then send your message again.`, tokens: 0, offline: true };
   }
 
   const res = parseReply(live.text, agent, short);
+  if (fallbackNote) res.text = `${res.text}\n\n(${fallbackNote})`;
   if (agent === 'grok' && res.art?.length && proj && key && platform !== 'web') await renderArt(key, settings.models.grokImage, proj, res.art);
-  return { ...res, tokens: live.tokens };
+  return { ...res, tokens: live.tokens, via };
 }

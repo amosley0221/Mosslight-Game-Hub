@@ -140,7 +140,8 @@ export class SyncEngine {
       }
       this.onState({ status: 'ok', at: Date.now() });
     } catch (e) {
-      this.onState({ status: 'error', message: String((e as Error)?.message || e) });
+      const msg = String((e as Error)?.message || e);
+      this.onState({ status: 'error', message: /failed to fetch|network/i.test(msg) ? "Can't reach GitHub right now — retrying automatically" : msg });
     } finally {
       this.busy = false;
       if (this.again) { this.again = false; this.schedulePush(); }

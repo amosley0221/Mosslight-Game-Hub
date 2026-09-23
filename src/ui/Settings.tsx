@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { AGENTS, DEPTH, ORDER, TOOLS } from '../core/constants';
+import { DEPTH, ORDER, TOOLS } from '../core/constants';
 import { AGENT_KEY } from '../core/agents';
 import type { Hub } from '../core/store';
 import type { AgentId } from '../core/types';
 import { detectTools, getSecret, isDesktop, openExternal, platform, setSecret, type ToolStatus } from '../platform';
 import { currentVersion, releasesUrl } from '../platform/updates';
-import { Glyph, Modal, RichText, Switch, useUpdate } from './common';
+import { Modal, RichText, Switch, useUpdate } from './common';
 import { SyncSettings } from './SyncSettings';
+import { AgentSettings } from './AgentSettings';
 
 /** Paste-an-API-key dialog. Keys go to the OS keychain (desktop) / app-private storage (Android). */
 export function KeyModal({ name, label, url, onClose, onSaved }: { name: string; label: string; url?: string; onClose: () => void; onSaved?: (has: boolean) => void }) {
@@ -115,35 +116,7 @@ export function Settings({ hub, onClose }: { hub: Hub; onClose: () => void }) {
           <Switch on={settings.devMode} onClick={() => updSettings(s => ({ ...s, devMode: !s.devMode }))} />
         </div>
       )}
-      <div>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>Agents</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {ORDER.map(a => {
-            const remote = settings.remote[a] || a === 'grok' || !isDesktop;
-            const hint = a === 'grok' ? 'xAI API · ideas & image generation' : a === 'codex' ? (remote ? 'OpenAI API · design tasks' : 'Local Codex CLI · design tasks & real builds') : (remote ? 'Anthropic API · code & systems' : 'Local Claude Code CLI · works in the project folder');
-            return (
-              <div key={a} style={{ background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
-                  <div className="row" style={{ gap: 10, minWidth: 0 }}>
-                    <Glyph agent={a} size={22} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{AGENTS[a].name} <span className="mono" style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 4 }}>{remote ? 'Remote' : 'Local'}</span></div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{hint}</div>
-                    </div>
-                  </div>
-                  {isDesktop && a !== 'grok' && <Switch on={remote} color={AGENTS[a].color} onClick={() => updSettings(s => ({ ...s, remote: { ...s.remote, [a]: !s.remote[a] } }))} />}
-                </div>
-                {remote && (
-                  <div className="row" style={{ gap: 6 }}>
-                    <input className="mono" value={settings.models[a]} onChange={e => updSettings(s => ({ ...s, models: { ...s.models, [a]: e.target.value } }))} title="Model" style={{ flex: 1, minWidth: 0, background: 'var(--panel)', border: '1px solid var(--line-2)', borderRadius: 8, padding: '6px 8px', fontSize: 11 }} />
-                    <button className="btn-ghost" style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: keys.has[AGENT_KEY[a].key] ? 'var(--green)' : undefined }} onClick={() => setKeyFor(a)}>{keys.has[AGENT_KEY[a].key] ? '✓ Key saved' : 'Add API key'}</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <AgentSettings hub={hub} keys={keys.has} onAddKey={setKeyFor} />
       <SyncSettings hub={hub} />
       <div>
         <div className="eyebrow" style={{ marginBottom: 8 }}>Updates</div>
