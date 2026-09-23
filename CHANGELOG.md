@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.16.0] - 2026-09-23
+
+### Changed
+- **Android projects have tabs, like the desktop.** Overview, Tasks, Builds, Story, Art, Music, Chat and GitHub are a row of pills under the title instead of one endless scroll, so the chat isn't six screens below the cover. The tab you're on is shared with the desktop through sync.
+  - **Overview** keeps the story, stack, what's up next and removing the project; **Tasks** lists every task and tapping one cycles its status.
+- **Landscape uses the space.** Turned sideways (or on a tablet), the cover fills the left side whole — no cropping — with the title, progress and tabs scrolling on the right. Portrait keeps the banner-and-scroll layout.
+
 ## [0.15.0] - 2026-09-23
 
 ### Added
