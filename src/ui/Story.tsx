@@ -71,7 +71,13 @@ function SuggestModal({ hub, p, title, seed, onClose }: { hub: Hub; p: Project; 
     if (!only) {
       setStep(`Reading what's written about ${found.length} ${title.toLowerCase()}…`);
       const bios = await hub.proposeBios(p.id, title, found.map(f => f.name));
-      setList(found.map(f => ({ ...f, body: bios[f.name.toLowerCase().replace(/[^a-z0-9]/g, '')], on: true })));
+      setList(found.map(f => {
+        const body = bios[f.name.toLowerCase().replace(/[^a-z0-9]/g, '')];
+        // The agent says so when a name turns out to be a document: believe it, and leave it
+        // unticked rather than hiding it, in case it's wrong.
+        const rejected = /^\s*(this is not a|not a character|this is a document)/i.test(body || '');
+        return { ...f, body, on: !rejected };
+      }));
       return;
     }
     setList(found.map(f => ({ ...f, on: true })));

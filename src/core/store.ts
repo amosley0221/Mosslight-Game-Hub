@@ -589,14 +589,21 @@ export function useHub() {
       // Documents named after one person ("cal-mercer-bio.md"), never collections
       // ("Cast-Biographies.md", "Character Appearance Pass05.md") — those are sources, not people.
       const GENERIC = /^(cast|character|characters|appearance|biographies|biography|bios|profiles|sheets|references|index|readme|notes|overview|summary|pass\d*|v\d+)$/i;
+      // Words that mean the file is about the work, not about a person.
+      const NOT_A_NAME = /^(profile|render|cpu|gpu|city|map|maps|report|reports|review|task|tasks|check|work|before|after|existing|build|builds|perf|performance|trace|corrected|claude|codex|grok|mosslight|hub)$/i;
+      // Folders that hold process, not fiction.
+      const SKIP = /^(docs\/tasks|docs\/reviews|docs\/reports|tools|build|builds|saved|intermediate)(\/|$)/i;
       const docs = await findFiles(root, ['md', 'txt'], 1200).catch(() => []);
       for (const d of docs) {
         if (!/bio|profile|sheet|character|cast/i.test(d.name)) continue;
+        const source = `${d.folder ? d.folder + '/' : ''}${d.name}`;
+        if (SKIP.test(d.folder)) continue;
         const name = nameFromFile(d.name);
         const words = name.split(/\s+/).filter(Boolean);
-        const source = `${d.folder ? d.folder + '/' : ''}${d.name}`;
-        // A person's own file: two or more words, none of them a category word.
-        if (words.length >= 2 && !words.some(w => GENERIC.test(w))) add(name, source);
+        // A person's own file: a couple of words, no digits, nothing about the work itself.
+        const looksLikeAName = words.length >= 2 && words.length <= 4 && !/\d/.test(name)
+          && !words.some(w => GENERIC.test(w) || NOT_A_NAME.test(w));
+        if (looksLikeAName) add(name, source);
         else sources.push(source);
       }
 
@@ -631,6 +638,7 @@ export function useHub() {
       'You are running in the project folder and can read these files. If you genuinely cannot read any file, say so once rather than repeating it for every name.',
       'Where a written bio exists, condense it faithfully: keep its facts, age, role and relationships, contradict nothing. Where nothing is written, say in one line what is known and mark the rest unknown.',
       '40–80 words each, plain prose, present tense.',
+      `If one of these names is not a ${title.toLowerCase().replace(/s$/, '')} at all — a report, a task card, a document that got picked up by mistake — start its body with "This is not a character" and say in one line what the file actually is.`,
       'Reply with JSON only: {"entries":[{"name":"<exactly as listed>","body":"<bio>","source":"<file, or none>"}]}',
     ].join('\n');
     push(pid, { id: uid(), type: 'user', text });

@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.22.1] - 2026-09-23
+
+### Changed
+- **Fewer documents mistaken for characters.** Reports and task cards whose names contain "profile" or "sheet" — `Docs/City-CPU-Profile54.md`, `Docs/Tasks/…-render-profile55-…md` — are no longer proposed: `Docs/Tasks`, `Docs/Reviews`, `Docs/Reports` and tool folders are skipped, names with digits or work words (profile, render, CPU, task, check, an agent's name) don't qualify, and a name has to be two to four words.
+- **The agent's own verdict is used.** When it replies that a name "is not a character", that proposal arrives unticked with its explanation, rather than being hidden — you can still tick it if the agent got it wrong.
 ## [0.22.0] - 2026-09-23
 
 ### Fixed
