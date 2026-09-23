@@ -19,7 +19,7 @@ import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
 import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
 import { installKit, kitPrompt } from '../brand/kit';
 import { loadState, readLegacy, saveState } from './storage';
-import { anyRunning, beginRun, endRun, startRun } from './runs';
+import { beginRun, endRun, startRun } from './runs';
 
 const SKEY = 'gdh:settings:v1';
 
