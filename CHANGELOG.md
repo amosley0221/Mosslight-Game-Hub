@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.24.0] - 2026-09-23
+
+### Added
+- **Engine & GPU card on the project page.** Shows every engine or heavy tool running on this computer — Unreal, Unity, Godot, Blender — with its PID, memory, when it started, and its window title. A process with **no window** is called out, because that's the usual cause of "something is still running" long after you closed it: a play session that never shut down, holding several gigabytes and the GPU. **End it** stops one, after telling you what you're ending.
+- **The agents can see the slot too.** The same list goes into their context, with the rule that they must not start an engine or GPU capture while one is running, and must never end one themselves — they name it and leave the decision to you. That's the one part of your coordination contract nothing could enforce before.
 ## [0.23.1] - 2026-09-23
 
 ### Fixed

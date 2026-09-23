@@ -150,3 +150,6 @@ export const cancelAgentRun = (runId: string) => (isTauri ? invoke<boolean>('can
 export interface FoundFile { path: string; name: string; folder: string; size: number; modified: number }
 export const findFiles = (root: string, exts: string[], max = 3000) => (isTauri ? invoke<FoundFile[]>('find_files', { root, exts, max }) : Promise.resolve([] as FoundFile[]));
 export const findBuilds = (root: string, max = 60) => (isTauri ? invoke<FoundFile[]>('find_builds', { root, max }) : Promise.resolve([] as FoundFile[]));
+export interface EngineProc { pid: number; name: string; window: string; mb: number; started: string; cmd: string }
+export const engineProcs = () => (isTauri ? invoke<EngineProc[]>('engine_procs') : Promise.resolve([] as EngineProc[]));
+export const endProcess = (pid: number) => invoke<void>('end_process', { pid });

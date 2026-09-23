@@ -204,6 +204,83 @@ async fn find_builds(root: String, max: usize) -> Result<Vec<FoundFile>, String>
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EngineProc {
+    pid: u32,
+    name: String,
+    /// Empty when the process has no window — usually a play session that never shut down.
+    window: String,
+    mb: u64,
+    started: String,
+    cmd: String,
+}
+
+/// Engines and heavy tools running right now, so the one GPU can be shared on purpose.
+#[tauri::command]
+async fn engine_procs() -> Result<Vec<EngineProc>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let out = if cfg!(windows) {
+            let ps = r#"@(Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(UnrealEditor|UnrealEditor-Cmd|UE4Editor|blender|blender-launcher|Unity|godot)' } | ForEach-Object { $u = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; [pscustomobject]@{ pid = [int]$_.ProcessId; name = $_.Name; cmd = [string]$_.CommandLine; mb = [int]($_.WorkingSetSize / 1MB); started = $_.CreationDate.ToString('s'); window = if ($u -and $u.MainWindowHandle -ne 0) { [string]$u.MainWindowTitle } else { '' } } }) | ConvertTo-Json -Compress"#;
+            run(Path::new("powershell"), &["-NoProfile", "-NonInteractive", "-Command", ps])?
+        } else {
+            let sh = r#"ps -axo pid=,rss=,lstart=,command= | grep -Ei '(UnrealEditor|UE4Editor|blender|Unity|godot)' | grep -v grep"#;
+            let text = run(Path::new("/bin/sh"), &["-c", sh])?;
+            // Same shape as the Windows JSON, built from ps columns.
+            let rows: Vec<String> = text
+                .lines()
+                .filter_map(|l| {
+                    let mut it = l.trim().splitn(2, char::is_whitespace);
+                    let pid = it.next()?.parse::<u32>().ok()?;
+                    let rest = it.next()?.trim();
+                    let (rss, rest) = rest.split_once(char::is_whitespace)?;
+                    let mb = rss.trim().parse::<u64>().unwrap_or(0) / 1024;
+                    let cmd = rest.trim();
+                    let name = cmd.split('/').next_back().unwrap_or(cmd).split_whitespace().next().unwrap_or("").to_string();
+                    Some(serde_json::json!({ "pid": pid, "name": name, "cmd": cmd, "mb": mb, "started": "", "window": "" }).to_string())
+                })
+                .collect();
+            format!("[{}]", rows.join(","))
+        };
+        let text = out.trim();
+        if text.is_empty() {
+            return Ok(Vec::new());
+        }
+        // PowerShell gives a bare object when there's exactly one match.
+        let wrapped = if text.starts_with('{') { format!("[{text}]") } else { text.to_string() };
+        let list: Vec<serde_json::Value> = serde_json::from_str(&wrapped).unwrap_or_default();
+        Ok(list
+            .into_iter()
+            .map(|v| EngineProc {
+                pid: v.get("pid").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
+                name: v.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                window: v.get("window").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                mb: v.get("mb").and_then(|x| x.as_u64()).unwrap_or(0),
+                started: v.get("started").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                cmd: v.get("cmd").and_then(|x| x.as_str()).unwrap_or("").chars().take(400).collect(),
+            })
+            .filter(|p| p.pid > 0)
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Ends one of those processes (the user asks for this explicitly).
+#[tauri::command]
+async fn end_process(pid: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let r = if cfg!(windows) {
+            run(Path::new("taskkill"), &["/PID", &pid.to_string(), "/T", "/F"])
+        } else {
+            run(Path::new("kill"), &["-9", &pid.to_string()])
+        };
+        r.map(|_| ())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Writes the raw request body to the absolute path in the `x-path` header (URL-encoded).
 #[tauri::command]
 fn save_bytes(request: tauri::ipc::Request<'_>) -> Result<String, String> {
@@ -695,6 +772,8 @@ pub fn run_app() {
             scan_folder,
             find_files,
             find_builds,
+            engine_procs,
+            end_process,
             save_bytes,
             read_file_bytes,
             copy_file,

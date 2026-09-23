@@ -3,7 +3,8 @@ import { AGENTS, ASSET_KINDS, ORDER, PLATFORMS, PLAT_LABEL, TOOLS, WEB_ENGINES, 
 import { totalUsage, type Hub } from '../core/store';
 import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
-import { copyText, isDesktop, launchPath, openExternal } from '../platform';
+import { copyText, endProcess, engineProcs, isDesktop, launchPath, openExternal, type EngineProc } from '../platform';
+import { setEngineProcs } from '../core/runs';
 import { RepoCard } from './GitHub';
 import { ArtTab, useProjectImages } from './Media';
 import { StoryTab } from './Story';
@@ -105,6 +106,55 @@ function StoryCard({ hub, p }: { hub: Hub; p: P }) {
           {sections.map(s => <button key={s.id} className="chip" style={{ background: 'var(--well)', color: 'var(--text-2)' }} onClick={() => hub.patchUi({ tab: 'story' })}>{s.title} <span className="mono" style={{ fontSize: 10, opacity: .6 }}>{s.entries.length}</span></button>)}
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * What's holding the GPU. Engines routinely survive their own window closing, so a play session
+ * from yesterday can still be blocking today's capture with nothing on screen to show for it.
+ */
+function EngineSlot() {
+  const [list, setList] = useState<EngineProc[] | null>(null);
+  const [busy, setBusy] = useState(0);
+  const load = () => { void engineProcs().then(setList).catch(() => setList([])); };
+  useEffect(() => {
+    if (!isDesktop) return undefined;
+    load();
+    const t = window.setInterval(load, 20_000);
+    return () => window.clearInterval(t);
+  }, []);
+  setEngineProcs(list || []);
+  if (!isDesktop || !list?.length) return null;
+  const end = async (p: EngineProc) => {
+    if (!window.confirm(`End ${p.name} (PID ${p.pid})?\n\n${p.window ? `Window: ${p.window}` : 'It has no window — usually a session that never shut down.'}\n\nAnything unsaved in it is lost.`)) return;
+    setBusy(p.pid);
+    try { await endProcess(p.pid); } catch (e) { window.alert(String((e as Error)?.message || e)); }
+    setBusy(0);
+    window.setTimeout(load, 700);
+  };
+  return (
+    <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+        <h3 className="eyebrow">Engine &amp; GPU · {list.length} running</h3>
+        <button className="link" onClick={load}>Refresh</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {list.map(p => (
+          <div key={p.pid} className="row wrap" style={{ gap: 10, alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '9px 12px' }}>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span className="row" style={{ gap: 8 }}>
+                <b style={{ fontSize: 13 }}>{p.name}</b>
+                <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>PID {p.pid} · {p.mb} MB{p.started ? ` · since ${p.started.replace('T', ' ').slice(0, 16)}` : ''}</span>
+              </span>
+              <span className="ellipsis mono" style={{ display: 'block', fontSize: 10.5, color: p.window ? 'var(--text-2)' : 'var(--danger)', marginTop: 2 }}>
+                {p.window || 'no window — a session that never shut down'}
+              </span>
+            </span>
+            <button className="btn" disabled={busy === p.pid} onClick={() => void end(p)}>{busy === p.pid ? 'Ending…' : 'End it'}</button>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -267,6 +317,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
   const upNext = p.tasks.filter(x => x.status !== 'done').sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1)).slice(0, 5);
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+      <EngineSlot />
       <BriefCard hub={hub} p={p} />
       <StoryCard hub={hub} p={p} />
       <BrandCard hub={hub} p={p} />

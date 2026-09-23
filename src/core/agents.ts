@@ -7,7 +7,7 @@ import { localFolder } from '../sync/device';
 import { uploadImage } from '../sync/images';
 import { repoContext } from '../github/context';
 import { claudeBlocks, describeAttachments, openAiBlocks } from './attachments';
-import { runsContext } from './runs';
+import { engineContext, runsContext } from './runs';
 
 /** `offline`: the agent isn't configured on this device, so nothing was sent or counted. */
 export type Reply = AgentResult & { tokens: number; offline?: boolean; via?: string; stopped?: boolean };
@@ -100,6 +100,7 @@ function projectContext(proj: Project | null) {
     ...(proj.brief?.text
       ? [`Standing project instructions, read from ${proj.brief.files.join(' and ')} in the project folder. These are the user's own rules and current state — they outrank anything you assume from empty fields here, and you follow them:\n${proj.brief.text}`]
       : []),
+    ...engineContext(),
     ...bibleContext(proj),
     ...(proj.brand
       ? [`Mosslight loading screen kit: ${proj.brand.path} — loading.html (the screen), SplashScreen.jsx (React), brand.css (tokens), assets/ (logo PNGs), README.md (how to wire it into each engine). Use these files and colours for anything brand-facing rather than inventing a new look.`]
