@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.17.2] - 2026-09-23
+
+### Fixed
+- **Auto-routing matched fragments of words.** Keywords were compared as plain substrings, so "ui" matched inside "b**ui**ld" and sent build and engineering requests to the design agent — the route label would read `auto-routed · "ui"` on a message with no "ui" in it. Matching is now whole words (still allowing `-s`, `-es`, `-ing`, `-ed`), covered by tests.
+
 ## [0.17.1] - 2026-09-23
 
 ### Fixed

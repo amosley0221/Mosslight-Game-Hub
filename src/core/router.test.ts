@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { parseReply } from './router';
+import { parseReply, route } from './router';
+
+describe('route keywords', () => {
+  it('matches whole words, not fragments', () => {
+    // "ui" used to match inside "build", sending engineering work to the design agent.
+    expect(route('Reconcile the current state and write the build manifest').hit).not.toBe('ui');
+    expect(route('Make it look right').hit).not.toBe('rig');
+    expect(route('Design the pause menu UI').agent).toBe('codex');
+  });
+
+  it('still matches plurals and -ing', () => {
+    expect(route('Fixing the collision bug in the controller').agent).toBe('claude');
+    expect(route('Two concept art ideas for the diner').agent).toBe('grok');
+  });
+
+  it('asks when nothing scores', () => {
+    expect(route('hello there').agent).toBeNull();
+  });
+});
 
 describe('parseReply control lines', () => {
   it('reads a plain handoff with its prompt', () => {

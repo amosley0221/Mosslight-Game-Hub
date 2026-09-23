@@ -1,6 +1,20 @@
 import { KW, ORDER } from './constants';
 import type { AgentId, AgentResult, BuildKind, PlanStep, Platform } from './types';
 
+/**
+ * Whole words only, plus the obvious endings: "build" also matches "builds" and "building",
+ * but "ui" no longer matches "b(ui)ld" and "rig" no longer matches "right".
+ */
+const cache = new Map<string, RegExp>();
+function mentions(text: string, word: string) {
+  let re = cache.get(word);
+  if (!re) {
+    re = new RegExp(`(?:^|[^a-z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:s|es|ing|ed)?(?:[^a-z0-9]|$)`, 'i');
+    cache.set(word, re);
+  }
+  return re.test(text);
+}
+
 /** Score a message against each agent's keywords. Ties or zero → null (ask the user). */
 export function route(text: string): { agent: AgentId | null; hit?: string } {
   const t = (text || '').toLowerCase();
@@ -10,7 +24,7 @@ export function route(text: string): { agent: AgentId | null; hit?: string } {
   for (const a of ORDER) {
     scores[a] = 0;
     for (const k of KW[a]) {
-      if (t.includes(k)) {
+      if (mentions(t, k)) {
         scores[a] += k.length > 5 ? 2 : 1;
         hits[a] = hits[a] || k;
       }
