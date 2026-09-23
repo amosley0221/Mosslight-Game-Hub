@@ -332,9 +332,12 @@ async function callClaudeCli(system: string, text: string, cwd: string | undefin
 /** Codex CLI `exec --json`: one JSON event per line (handles both current and older event shapes). */
 async function callCodexCli(system: string, text: string, cwd: string | undefined, model: string | undefined, network: boolean, io: RunIO) {
   const prompt = `${system}\n\n---\n\n${text}`;
-  // --full-auto sandboxes the workspace with the network off, which fails every git fetch/push.
+  // Codex exec defaults to a read-only sandbox: without workspace-write it can look but not touch.
+  // Its network is off in that sandbox too, which fails every git fetch/push.
   const net = network ? ['-c', 'sandbox_workspace_write.network_access=true'] : [];
-  const base = ['exec', '--skip-git-repo-check', ...net, ...(model ? ['-m', model] : [])];
+  const base = ['exec', '--skip-git-repo-check', '-s', 'workspace-write', ...net, ...(model ? ['-m', model] : [])];
+  // Codex before 0.15 used --full-auto for the same thing and rejects -s.
+  const legacy = ['exec', '--skip-git-repo-check', ...(model ? ['-m', model] : []), '--full-auto'];
   let last = '', tokens = 0, err = '';
   const onLine = (line: string) => {
     let j: any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -358,11 +361,18 @@ async function callCodexCli(system: string, text: string, cwd: string | undefine
     else if (msg.type === 'agent_message') { last = String(msg.message || ''); io.onText?.(last); }
   };
   io.onStep?.('Codex started');
-  let res = await runAgentCliStream('codex', [...base, '--full-auto', '--json', prompt], '', cwd, io.runId || '', onLine);
-  if (!res.ok && !res.cancelled && /unexpected argument|unknown (option|argument)|--json/i.test(res.stderr)) {
-    // Older Codex without --json: run plainly and take the whole output.
-    res = await runAgentCliStream('codex', [...base, prompt], '', cwd, io.runId || '', l => io.onText?.(l));
-    last = res.stdout.trim();
+  const badFlag = (r: { ok: boolean; cancelled?: boolean; stderr: string }) =>
+    !r.ok && !r.cancelled && /unexpected argument|unknown (option|argument)|unrecognized/i.test(r.stderr);
+
+  let res = await runAgentCliStream('codex', [...base, '--json', prompt], '', cwd, io.runId || '', onLine);
+  if (badFlag(res)) {
+    // An older Codex: same sandbox, the flag it used to be called by.
+    res = await runAgentCliStream('codex', [...legacy, '--json', prompt], '', cwd, io.runId || '', onLine);
+    if (badFlag(res)) {
+      // Older still, with no JSONL events: run it plainly and take the whole output.
+      res = await runAgentCliStream('codex', [...legacy, prompt], '', cwd, io.runId || '', l => io.onText?.(l));
+      last = res.stdout.trim();
+    }
   }
   if (res.cancelled) return { text: last, tokens, stopped: true };
   if (err) throw new Error(err);

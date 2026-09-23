@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.17.1] - 2026-09-23
+
+### Fixed
+- **Codex couldn't change anything.** Recent Codex CLI versions removed `--full-auto`, so the whole command was rejected and Mosslight quietly fell back to a plain run — which uses Codex's **read-only** sandbox. It could look at your project but never write to it, and reported things like "the filesystem tool failed to start". Codex now runs with `-s workspace-write` (plus network access unless you've turned that off), and falls back to `--full-auto` only for older CLIs.
+
 ## [0.17.0] - 2026-09-23
 
 ### Added
