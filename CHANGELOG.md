@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.23.0] - 2026-09-23
+
+### Changed
+- **When a run falls back to the API and that fails too, you see both reasons.** Previously the local failure was thrown away and you got only the API's message — which made "You have no credits remaining" look like the CLI was out of credits.
+- **Billing errors say whose balance ran out.** An API credit or quota error now spells out that it's the API key's own balance, not the ChatGPT/Claude plan the local CLI runs on, and points at Settings → Agents → Local to stop falling back to the paid API.
 ## [0.22.2] - 2026-09-23
 
 ### Fixed

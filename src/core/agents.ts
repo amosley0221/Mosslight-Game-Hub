@@ -493,8 +493,18 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
   // (Local mode has already returned or thrown above.)
   if (key) {
     io.onVia?.('api');
-    const r = await callApi(agent, key, settings.models[agent], withHist(withRepo(systemFor(false))), body, io);
-    return { ...r, via: 'api', note };
+    try {
+      const r = await callApi(agent, key, settings.models[agent], withHist(withRepo(systemFor(false))), body, io);
+      return { ...r, via: 'api', note };
+    } catch (e) {
+      const msg = String((e as Error)?.message || e);
+      // The API's wallet is separate from the CLI's plan, and the message says "credits" without
+      // saying which — worth spelling out, along with the local failure that led here.
+      const billing = /credit|quota|billing|insufficient_quota|exceeded your current/i.test(msg)
+        ? ` That's the ${AGENT_KEY[agent].label}'s own balance, not your ${agent === 'claude' ? 'Claude' : agent === 'codex' ? 'ChatGPT' : 'xAI'} plan — the local ${cliName} runs on the plan. Set ${AGENTS[agent].name} to Local in ⚙ Settings → Agents to stop it falling back to the API.`
+        : '';
+      throw new Error(note ? `${note.replace(/ — answered with the API instead\.$/, '.')} The API then failed too: ${msg}${billing}` : `${msg}${billing}`);
+    }
   }
   return null;
 }
