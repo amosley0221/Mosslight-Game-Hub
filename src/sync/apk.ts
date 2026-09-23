@@ -18,7 +18,8 @@ const MAX_APK = 1024 * 1024 * 1024;
 /** Desktop: push a local APK to the sync repo so paired phones can install it. */
 export async function uploadApk(store: GitHubStore, b: Build) {
   const bytes = await readFileBytes(b.path, MAX_APK);
-  return store.uploadAsset(bytes, b.name.endsWith('.apk') ? b.name : b.name + '.apk', 'application/vnd.android.package-archive');
+  const a = await store.uploadAsset(bytes, b.name.endsWith('.apk') ? b.name : b.name + '.apk', 'application/vnd.android.package-archive');
+  return { assetId: a.id, name: a.name, size: a.size };
 }
 
 async function download(store: GitHubStore, b: Build): Promise<string> {
