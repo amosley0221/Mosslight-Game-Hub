@@ -315,6 +315,23 @@ export function useHub() {
   /** Set once `saveCard` exists below; applyReply is defined before it. */
   const saveCardRef = useRef<(pid: string, task: Task, change?: string) => Promise<void>>();
 
+  /**
+   * What was said in this chat before now, for the agent's context. Handoffs and plans are
+   * included as lines of their own — "Codex suggested Claude take X" is often the thing the
+   * next message refers to.
+   */
+  const historyFor = useCallback((key: string, skipId?: string) => {
+    const list = (dataRef.current.messages[key] || []).filter(m => m.id !== skipId).slice(-14);
+    const out: { who: string; text: string }[] = [];
+    for (const m of list) {
+      if (m.type === 'user') out.push({ who: 'User', text: m.text + (m.attachments?.length ? `\n(attached: ${m.attachments.map(a => a.name).join(', ')})` : '') });
+      else if (m.type === 'agent' && m.text && !m.pending) out.push({ who: AGENTS[m.agent].name, text: m.text });
+      else if (m.type === 'handoff') out.push({ who: AGENTS[m.from].name, text: `Suggested ${AGENTS[m.to].name} take this (${m.status}): ${m.reason}${m.prompt ? `\nPrompt written for ${AGENTS[m.to].name}:\n${m.prompt}` : ''}` });
+      else if (m.type === 'plan' && m.summary) out.push({ who: `${AGENTS[m.lead].name} (team plan, ${m.status})`, text: `${m.summary}\n${m.steps.map((s, i) => `${i + 1}. [${AGENTS[s.agent].name}] ${s.title}`).join('\n')}` });
+    }
+    return out;
+  }, []);
+
   const approveRef = useRef<(key: string, m: Extract<Message, { type: 'handoff' }>, prompt?: string, auto?: boolean) => void>();
 
   /**
@@ -344,6 +361,8 @@ export function useHub() {
       // Stream updates are batched so a fast token stream doesn't re-render (or sync) on every word.
       const live = { text: '', steps: [] as string[], via: '' };
       const wrote = new Set<string>();
+      // Captured before the run so the agent sees the conversation as it stood when asked.
+      const history = historyFor(key, id);
       const runStart = now();
       let timer: number | undefined;
       const flush = () => { timer = undefined; updAgentMsg(key, id, m => ({ text: live.text, steps: live.steps.slice(-40), route: live.via ? `${routeLabel} · ${live.via}` : m.route })); };
@@ -360,6 +379,7 @@ export function useHub() {
           runId,
           files,
           onFile: p => wrote.add(p),
+          history,
         });
       } catch (e) {
         res = ctrl.signal.aborted
@@ -398,7 +418,7 @@ export function useHub() {
     const tail = job.finally(() => { if (queues.current[agent] === tail) delete queues.current[agent]; });
     queues.current[agent] = tail;
     return job;
-  }, [push, updAgentMsg, applyReply]);
+  }, [push, updAgentMsg, applyReply, historyFor]);
 
   /** Stops a running (or queued) request started on this device. */
   const stopRun = useCallback((key: string, m: Extract<Message, { type: 'agent' }>) => {
@@ -439,7 +459,7 @@ export function useHub() {
     const proj = dataRef.current.projects.find(p => p.id === key) || null;
     setRunning(1);
     try {
-      const plan = await planTeam(lead, text, proj, settingsRef.current, { files });
+      const plan = await planTeam(lead, text, proj, settingsRef.current, { files, history: historyFor(key) });
       if ('error' in plan) updPlan(key, id, () => ({ status: 'failed', error: plan.error }));
       else {
         updPlan(key, id, () => ({ status: 'pending', summary: plan.summary, steps: plan.steps }));
@@ -450,7 +470,7 @@ export function useHub() {
     } finally {
       setRunning(-1);
     }
-  }, [push, updPlan, applyReply]);
+  }, [push, updPlan, applyReply, historyFor]);
 
   /** Runs an approved plan: independent steps in parallel, dependent ones after their inputs, passing results along. */
   const runPlan = useCallback(async (key: string, planId: string, steps: PlanStep[]) => {

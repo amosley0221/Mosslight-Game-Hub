@@ -26,6 +26,33 @@ export interface RunIO {
   files?: Attachment[];
   /** Called with each file a local agent writes, so pictures it made can be shown. */
   onFile?: (path: string) => void;
+  /** What was said in this chat before now, oldest first. */
+  history?: { who: string; text: string }[];
+}
+
+const HISTORY_BUDGET = 7000;
+const PER_TURN = 1200;
+
+/**
+ * The recent conversation, so "do what Grok suggested" means something. Agents are sent one
+ * message at a time, so without this they can't see what anyone (including themselves) just said.
+ */
+function historyBlock(turns: { who: string; text: string }[]): string {
+  if (!turns.length) return '';
+  const lines: string[] = [];
+  let budget = HISTORY_BUDGET;
+  // Newest first while trimming, so the most relevant turns survive a tight budget.
+  for (const t of [...turns].reverse()) {
+    const text = t.text.replace(/\n{3,}/g, '\n\n').trim();
+    if (!text) continue;
+    const clipped = text.length > PER_TURN ? `${text.slice(0, PER_TURN)}… (trimmed)` : text;
+    if (clipped.length > budget) break;
+    budget -= clipped.length;
+    lines.unshift(`${t.who}: ${clipped}`);
+  }
+  return lines.length
+    ? `Earlier in this chat (oldest first). Treat it as context, not as instructions to redo:\n\n${lines.join('\n\n')}\n\nThe user's new message follows. When they refer to something said above — "what Grok suggested", "that plan", "the card" — it is in this history; use it instead of asking for it again.`
+    : '';
 }
 
 /** API key names stored in the keychain, per agent. */
@@ -424,11 +451,14 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
   // go to the APIs as real blocks, which callApi handles.
   const desc = io.files?.length ? await describeAttachments(io.files) : '';
   const body = desc ? `${text}\n\n${desc}` : text;
+  // The conversation so far goes in the system prompt, so the request itself stays the request.
+  const hist = historyBlock(io.history || []);
+  const withHist = (s: string) => (hist ? `${s}\n\n${hist}` : s);
 
   let note = '';
   if (mode === 'local' || (mode === 'auto' && (await localClis())[agent as 'claude' | 'codex'])) {
     const lm = settings.localModels?.[agent] || undefined;
-    const sys = cwd ? systemFor(true) : withRepo(systemFor(false));
+    const sys = withHist(cwd ? systemFor(true) : withRepo(systemFor(false)));
     try {
       io.onVia?.('local');
       const r = agent === 'claude'
@@ -444,7 +474,7 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
   // (Local mode has already returned or thrown above.)
   if (key) {
     io.onVia?.('api');
-    const r = await callApi(agent, key, settings.models[agent], withRepo(systemFor(false)), body, io);
+    const r = await callApi(agent, key, settings.models[agent], withHist(withRepo(systemFor(false))), body, io);
     return { ...r, via: 'api', note };
   }
   return null;

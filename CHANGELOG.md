@@ -3,6 +3,14 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.17.0] - 2026-09-23
+
+### Added
+- **Agents can see the conversation.** Until now every request was sent on its own, so "turn what Grok suggested into a task for Claude" meant nothing — the agent had never seen Grok's reply. Each request now carries the recent chat: your messages, the agents' replies, handoff cards with the prompt that was written, and team plans with their steps.
+  - Roughly the last 14 turns, trimmed to about 7,000 characters with the newest kept first, so a long thread costs a predictable amount.
+  - It's labelled as context, not as work to redo, and it tells the agent that "that plan", "the card" or "what Grok suggested" is in there — instead of asking you to paste it again.
+  - The team lead gets it too, so a plan can build on what was already discussed.
+
 ## [0.16.1] - 2026-09-23
 
 ### Fixed

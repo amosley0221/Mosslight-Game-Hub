@@ -243,7 +243,7 @@ Attach files to any message with the **📎** button, by dragging them onto the 
 Attachments sync, so a screenshot you send from your phone is on the desktop too, and tapping one in the chat opens it. Big images are resized before they're sent, so a 4K screenshot doesn't cost a fortune in tokens.
 
 ### Telling the agents about a project that already has history
-The chat is a log for you, not memory for the agents — each message is sent on its own, with no previous messages attached. So pasting last week's context into one message only affects that message. Put lasting facts where they're sent every time:
+The chat's recent turns travel with each request (about the last 14, trimmed), so agents can act on "what Grok suggested" or "that plan". Older history is not sent, so anything that must hold for every request belongs somewhere durable:
 
 1. **`AGENTS.md` in the project folder** — standing rules and current state: who owns what, branch rules, what's built and what isn't, which documents to trust. Local Claude Code and Codex read it themselves, and Mosslight also loads it (or `CLAUDE.md`, or `Docs/PROJECT-HANDOFF.md`) into *every* agent's context, so Grok and your phone get the same rules. The **Project instructions** card on Overview shows what was found.
 2. **The Story summary** — a short baseline of what the game is and where it stands. It goes to every agent on every device.
