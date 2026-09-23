@@ -1,5 +1,5 @@
 import type { AgentId, Asset, HubData, Message, Project, Usage } from '../core/types';
-import { DEMO_USAGE_KEY } from '../core/seed';
+import { DEMO_USAGE_KEY, isDemoAsset } from '../core/seed';
 
 /** What goes into the shared store. Settings (theme, API keys, Local/Remote) stay per device. */
 export type SyncDoc = Pick<HubData, 'projects' | 'messages' | 'assets' | 'usageBy' | 'deleted' | 'devices'> & { v: 1 };
@@ -60,7 +60,7 @@ export function merge(local: HubData, remote: SyncDoc): HubData {
   const threads = new Set([...Object.keys(local.messages), ...Object.keys(remote.messages || {})]);
   return {
     projects: mergeById<Project>(local.projects, remote.projects || [], 'p:', deleted),
-    assets: mergeById<Asset>(local.assets, remote.assets || [], 'a:', deleted),
+    assets: mergeById<Asset>(local.assets, remote.assets || [], 'a:', deleted).filter(a => !isDemoAsset(a)),
     messages: Object.fromEntries([...threads].map(k => [k, mergeThread(local.messages[k] || [], remote.messages?.[k] || [], deleted)])),
     usageBy: mergeUsage(local.usageBy, remote.usageBy || {}),
     deleted,

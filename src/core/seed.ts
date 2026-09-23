@@ -29,6 +29,9 @@ const DEMO_ASSETS = ['Mixamo_Idle_Breathing.fbx', 'Mixamo_Walk_Forward.fbx', 'La
 export const DEMO_USAGE_KEY = 'demo';
 const PURGED_KEY = 'mosslight.demoPurged';
 
+/** Demo assets had random ids per device, so they are recognised by name (and never had a file). */
+export const isDemoAsset = (a: { name: string; path?: string }) => DEMO_ASSETS.includes(a.name) && !a.path;
+
 const isDemoWelcome = (m: { type: string; text?: string; route?: string }) => m.type === 'agent' && m.route === 'hub' && (m.text || '').startsWith('Mosslight online.');
 
 /** Removes demo projects/assets/messages, leaving deletion markers so other devices drop them too. */
@@ -36,7 +39,7 @@ export function purgeDemo(d: HubData, t = Date.now()): HubData {
   const deleted = { ...(d.deleted || {}) };
   for (const id of DEMO_PROJECTS) deleted['p:' + id] = t;
   const assets = d.assets.filter(a => {
-    const demo = DEMO_ASSETS.includes(a.name) && !a.path;
+    const demo = isDemoAsset(a);
     if (demo) deleted['a:' + a.id] = t;
     return !demo;
   });
