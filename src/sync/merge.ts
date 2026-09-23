@@ -1,4 +1,5 @@
 import type { AgentId, Asset, HubData, Message, Project, Usage } from '../core/types';
+import { DEMO_USAGE_KEY } from '../core/seed';
 
 /** What goes into the shared store. Settings (theme, API keys, Local/Remote) stay per device. */
 export type SyncDoc = Pick<HubData, 'projects' | 'messages' | 'assets' | 'usageBy' | 'deleted' | 'devices'> & { v: 1 };
@@ -47,6 +48,7 @@ function mergeUsage(a: Record<string, Record<AgentId, Usage>>, b: Record<string,
     // Each device only ever increases its own counters, so the larger value is the newer one.
     out[dev] = !r ? u : (Object.fromEntries((Object.keys({ ...u, ...r }) as AgentId[]).map(k => [k, (u[k]?.calls || 0) >= (r[k]?.calls || 0) ? u[k] : r[k]])) as Record<AgentId, Usage>);
   }
+  delete out[DEMO_USAGE_KEY];
   return out;
 }
 

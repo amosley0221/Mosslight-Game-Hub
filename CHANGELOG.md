@@ -3,6 +3,26 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.3.0] - 2026-09-22
+
+### Changed
+- **The app now starts with an empty library.** The built-in demo content has been removed:
+  - the Hollowmere, Byteshift and Orbital Drift projects and their tasks, art, code and builds
+  - the sample asset-library files
+  - the pre-filled usage numbers
+  - the scripted welcome message
+
+  Updating removes that demo content from existing installs once. The removal syncs, so it doesn't come back from another device. Projects you created yourself are kept.
+- **No more fake agent replies.** An agent without an API key (or local CLI) no longer invents answers, tasks, art or code. Instead it says it isn't set up yet and what to add in Settings. These replies don't count toward usage.
+
+### Added
+- A welcome screen for an empty library on desktop and Android, with shortcuts to create a project, open a local folder, or open Settings to set up sync and agents.
+- An empty chat explains how messages are routed to Grok, Codex and Claude.
+- **Android**:
+  - **New project** (the **+** button) so you can start a project from your phone.
+  - **Remove project** at the bottom of each game page, with a confirmation.
+- The desktop **Remove project** confirmation now makes clear that the project is removed on all synced devices and that files on disk aren't touched.
+
 ## [0.2.0] - 2026-09-22
 
 ### Added

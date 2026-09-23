@@ -56,6 +56,19 @@ export function MessageView({ hub, chatKey, m, compact }: { hub: Hub; chatKey: s
   );
 }
 
+/** Shown in an empty chat: how routing works. */
+export function ChatIntro({ compact }: { compact?: boolean }) {
+  return (
+    <div style={{ fontSize: compact ? 12 : 13, color: 'var(--muted)', lineHeight: 1.55, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span>Type anything — each message goes to the right agent:</span>
+      {ORDER.map(a => (
+        <span key={a} className="row" style={{ gap: 8 }}><span className="dot" style={{ width: 8, height: 8, background: AGENTS[a].color }} /><b style={{ color: AGENTS[a].color }}>{AGENTS[a].name}</b> {AGENTS[a].role.toLowerCase()}</span>
+      ))}
+      <span>Agents need an API key (or a local CLI on desktop) — add them in ⚙ Settings → Agents.</span>
+    </div>
+  );
+}
+
 export function Composer({ hub, compact }: { hub: Hub; compact?: boolean }) {
   const { ui, patchUi } = hub;
   const preview = ui.forced ? { agent: ui.forced, hit: 'manual' } : route(ui.input);
@@ -89,6 +102,7 @@ export function ChatRail({ hub }: { hub: Hub }) {
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{proj ? 'Scoped to this project. Auto-routed; reroute any reply.' : 'Not scoped to a project — open a tile to add tasks and art.'}</div>
       </div>
       <div style={{ overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {msgs.length === 0 && <ChatIntro />}
         {msgs.map(m => <div key={m.id} className="rise"><MessageView hub={hub} chatKey={chatKey} m={m} /></div>)}
         <div ref={end} />
       </div>

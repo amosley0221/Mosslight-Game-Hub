@@ -70,7 +70,7 @@ Builds that can't run on the device you're holding are dimmed. Tap one to see wh
 
 ## 2. Setting up the agents
 
-Each agent needs either an API key (**Remote**) or a command-line tool installed on your computer (**Local**, desktop only). Without either, it replies in simulated mode, and every reply says so.
+Each agent needs either an API key (**Remote**) or a command-line tool installed on your computer (**Local**, desktop only). Without either, it replies with a short note saying what to set up, and changes nothing in your project.
 
 Keys are **not synced**, so add them on each device you want to chat from. The phone always uses Remote.
 
@@ -119,4 +119,4 @@ The models are set in the Grok row: `grok-4` for chat and `grok-2-image` for ima
 
 - **Header pills**: each agent's call count goes up as you chat.
 - **Project → Usage tab**: shows calls, tokens and estimated cost per agent, added up across all your devices.
-- **Replies still end with "(Simulated — …)"**: that agent has no key or CLI on this device. The message says what's missing.
+- **An agent replies "isn't set up on this device yet"**: that agent has no key or CLI on this device. The message says what's missing.

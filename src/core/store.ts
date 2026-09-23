@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from './constants';
 import { respond, type Reply } from './agents';
 import { route } from './router';
-import { defaultSettings, norm, seedData } from './seed';
+import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
 import type { AgentId, Asset, Build, HubData, Message, Platform, Project, Settings, Usage } from './types';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
@@ -22,13 +22,13 @@ function loadData(): HubData {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (s && s.projects) {
-      return {
+      return purgeDemoOnce({
         projects: s.projects.map(norm), messages: s.messages || {}, assets: s.assets || [],
         usageBy: s.usageBy || (s.usage ? { [deviceId]: s.usage } : {}), deleted: s.deleted || {}, devices: s.devices || {},
-      };
+      });
     }
   } catch { /* first run */ }
-  return seedData();
+  return emptyData();
 }
 
 const ZERO: Record<AgentId, Usage> = { grok: { calls: 0, tokens: 0 }, codex: { calls: 0, tokens: 0 }, claude: { calls: 0, tokens: 0 } };
@@ -211,10 +211,10 @@ export function useHub() {
     }
     patchUi({ busy: false });
     setData(d => {
-      const messages = { ...d.messages, [key]: (d.messages[key] || []).map(m => (m.id === id ? { ...m, text: res.text, pending: false, error: res.error } as Message : m)) };
+      const messages = { ...d.messages, [key]: (d.messages[key] || []).map(m => (m.id === id ? { ...m, text: res.text, pending: false, error: res.error || res.offline } as Message : m)) };
       const mine = { ...ZERO, ...(d.usageBy[deviceId] || {}) };
-      const usageBy = { ...d.usageBy, [deviceId]: { ...mine, [agent]: { calls: mine[agent].calls + 1, tokens: mine[agent].tokens + res.tokens } } };
-      const projects = !proj ? d.projects : d.projects.map(p => {
+      const usageBy = res.offline ? d.usageBy : { ...d.usageBy, [deviceId]: { ...mine, [agent]: { calls: mine[agent].calls + 1, tokens: mine[agent].tokens + res.tokens } } };
+      const projects = !proj || res.offline ? d.projects : d.projects.map(p => {
         if (p.id !== proj.id) return p;
         const q = { ...p };
         if (res.tasks?.length) { q.tasks = [...q.tasks, ...res.tasks.map(t => T(t.agent || agent, t.title, 'todo', 0))]; q.activity = [...res.tasks.map(t => A(t.agent || agent, 'Task added: ' + t.title)), ...q.activity]; }
@@ -244,7 +244,7 @@ export function useHub() {
     await dispatch(pid, s.agent, text, 'you picked ' + AGENTS[s.agent].name);
     await new Promise(r => setTimeout(r, 50));
     const reply = (dataRef.current.messages[pid] || []).slice(before).find(m => m.type === 'agent') as Extract<Message, { type: 'agent' }> | undefined;
-    if (reply && !reply.error && reply.text) updProj(pid, q => ({ ...q, gdd: q.gdd.map(g => (g.id === sid ? { ...g, body: reply.text.replace(/\n\n\(Simulated[\s\S]*$/, '') } : g)) }));
+    if (reply && !reply.error && reply.text) updProj(pid, q => ({ ...q, gdd: q.gdd.map(g => (g.id === sid ? { ...g, body: reply.text } : g)) }));
   }, [dispatch, push, updProj]);
 
   const sendText = useCallback((key: string, raw: string, forced: AgentId | null) => {

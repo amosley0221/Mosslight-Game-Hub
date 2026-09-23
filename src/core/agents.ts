@@ -6,7 +6,8 @@ import { getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgent
 import { localFolder } from '../sync/device';
 import { uploadImage } from '../sync/images';
 
-export type Reply = AgentResult & { tokens: number };
+/** `offline`: the agent isn't configured on this device, so nothing was sent or counted. */
+export type Reply = AgentResult & { tokens: number; offline?: boolean };
 
 /** API key names stored in the keychain, per agent. */
 export const AGENT_KEY: Record<AgentId, { key: string; label: string; url: string }> = {
@@ -130,49 +131,6 @@ async function renderArt(key: string, model: string, proj: Project, art: NonNull
   }
 }
 
-// ── Simulated fallback (from the prototype) — used until a key / CLI is configured ──
-
-const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-async function simulate(agent: AgentId, text: string, proj: Project | null): Promise<AgentResult> {
-  const t = text.toLowerCase(), short = shortOf(text), name = proj ? proj.name : 'this game';
-  if (agent === 'grok') {
-    await wait(900 + Math.random() * 700);
-    const wantsArt = /art|concept|visual|look|cover|key art|mood/.test(t);
-    if (/next|tackle|priorit|plan/.test(t) && proj) {
-      const open = proj.tasks.filter(x => x.status !== 'done');
-      return { text: `Reading the board for ${name}:\n\n` + open.slice(0, 3).map((x, i) => `${i + 1}. ${AGENTS[x.agent].name} → ${x.title}${x.status === 'doing' ? ' (already moving — finish it first)' : ''}`).join('\n') + `\n\nMy take: unblock the ${open[0] ? AGENTS[open[0].agent].name : 'Claude'} item first; everything downstream depends on it.` };
-    }
-    const res: AgentResult = {
-      text: `Three directions for "${short}":\n\n1. The obvious one, done well — lean into what ${name} already promises and sharpen the hook.\n2. The inversion — flip the player's role so the core verb feels new.\n3. The weird one — a constraint nobody asked for that makes the whole thing memorable.\n\nI'd chase #2.` + (wantsArt ? ' I sketched two concept prompts for it — check Concept art.' : ' Want concept art for any of these?'),
-      tasks: [{ title: 'Expand direction #2: ' + short }],
-    };
-    if (wantsArt) {
-      res.art = [{ title: 'Concept — ' + short, prompt: text.slice(0, 120) }, { title: 'Alt mood — ' + short, prompt: 'Alternate palette and time of day · ' + text.slice(0, 90) }];
-      res.handoff = { to: 'codex', reason: 'Turn the stronger concept into a style guide and mood board before anyone builds against it.' };
-    }
-    return res;
-  }
-  if (agent === 'codex') {
-    await wait(1000 + Math.random() * 800);
-    if (/build|shortcut|test|package|export|play|launch/.test(t)) {
-      return { text: `Packaging builds needs a live Codex — switch Codex to Local (Codex CLI) or add an OpenAI key in Settings, then ask again. I'll register the build here as soon as it exists.` };
-    }
-    const res: AgentResult = {
-      text: `Design pass on "${short}":\n\n• Composition — one focal point, everything else recedes.\n• Palette — pulling from the existing mood board so it reads as ${name}.\n• Readability — checked at 1080p and Steam Deck scale.\n\nI'll deliver a mockup plus a style-guide page.`,
-      tasks: [{ title: 'Mockup + style guide: ' + short }],
-    };
-    if (/implement|hook|wire|logic|code|behav|animate|interact/.test(t)) res.handoff = { to: 'claude', reason: 'The visual spec is ready; someone needs to implement the behavior behind it.' };
-    return res;
-  }
-  await wait(1100);
-  return {
-    text: `For "${short}" I'd split it into a data layer, a pure update step, and a thin presentation binding — testable without the editor running. Logged a starting point to Dev.`,
-    tasks: [{ title: 'Implement: ' + short }],
-    code: [{ title: short, lang: 'pseudo', code: `// ${short}\nstate = load()\nstate = update(state, input, dt)   // pure, testable\nrender(state)                     // thin binding` }],
-  };
-}
-
 // ── Entry point ────────────────────────────────────────────────────────────────
 
 export async function respond(agent: AgentId, text: string, proj: Project | null, settings: Settings): Promise<Reply> {
@@ -193,10 +151,9 @@ export async function respond(agent: AgentId, text: string, proj: Project | null
   }
 
   if (!live) {
-    const sim = await simulate(agent, text, proj);
+    // No fake replies: say what's missing and change nothing in the project.
     const how = agent === 'grok' ? 'add an xAI API key' : isDesktop ? `add an ${AGENT_KEY[agent].label} or switch ${AGENTS[agent].name} to Local` : `add an ${AGENT_KEY[agent].label}`;
-    sim.text += `\n\n(Simulated — ${how} in Settings to make ${AGENTS[agent].name} live.)`;
-    return { ...sim, tokens: estTokens(text, sim.text) };
+    return { text: `${AGENTS[agent].name} isn't set up on this device yet — ${how} in ⚙ Settings → Agents, then send your message again.`, tokens: 0, offline: true };
   }
 
   const res = parseReply(live.text, agent, short);

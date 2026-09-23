@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { stamp } from '../core/store';
-import { seedData } from '../core/seed';
+import { sampleData as seedData } from '../test/fixtures';
 import type { HubData } from '../core/types';
 import { SyncEngine } from './engine';
 import type { GitHubStore } from './github';

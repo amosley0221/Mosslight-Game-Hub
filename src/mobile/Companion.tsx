@@ -4,16 +4,17 @@ import { AGENTS, PLAT_LABEL, engineName } from '../core/constants';
 import type { Hub } from '../core/store';
 import { ago } from '../core/util';
 import { Glyph, ImageSlot, Toast, asset, coverOf } from '../ui/common';
-import { Composer, MessageView } from '../ui/Chat';
+import { ChatIntro, Composer, MessageView } from '../ui/Chat';
 import { launchProps, tileInfo } from '../ui/Library';
 
 const section = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 };
 
 /** Android companion: Games list + Game detail, same data model and chat as desktop. */
-export function Companion({ hub, onSettings, banner }: { hub: Hub; onSettings: () => void; banner?: ReactNode }) {
+export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSettings: () => void; onNew: () => void; banner?: ReactNode }) {
   const { data, proj, patchUi, ui } = hub;
   const scroller = useRef<HTMLDivElement>(null);
   const [chatEnd, setChatEnd] = useState<HTMLDivElement | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   // Hardware back button returns to the games list.
   useEffect(() => {
@@ -37,7 +38,10 @@ export function Companion({ hub, onSettings, banner }: { hub: Hub; onSettings: (
               <img src={asset('mosslight-wordmark.png')} alt="Mosslight" style={{ height: 34, width: 'auto', display: 'block' }} />
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{data.projects.length} projects · {builds} test builds ready</div>
             </div>
+            <div className="row">
+            <button onClick={onNew} aria-label="New project" style={{ background: 'var(--accent)', border: 0, borderRadius: 999, width: 40, height: 40, fontSize: 20, color: 'var(--on-accent)' }}>+</button>
             <button onClick={onSettings} aria-label="Settings" style={{ background: 'var(--panel)', border: '1px solid var(--line-2)', borderRadius: 999, width: 40, height: 40, fontSize: 16, color: 'var(--text-2)' }}>⚙</button>
+            </div>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '6px 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {data.projects.map(p => {
@@ -67,7 +71,14 @@ export function Companion({ hub, onSettings, banner }: { hub: Hub; onSettings: (
                 </div>
               );
             })}
-            {!data.projects.length && <p className="muted" style={{ fontSize: 13 }}>No projects yet.</p>}
+            {!data.projects.length && (
+              <div className="card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>Welcome to Mosslight</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>Your library is empty. Pair this phone with your computer to see your games here, or start a new project.</div>
+                <button className="btn-accent" style={{ minHeight: 44 }} onClick={onSettings}>Pair with my computer</button>
+                <button className="btn" style={{ minHeight: 44 }} onClick={onNew}>New project</button>
+              </div>
+            )}
           </div>
         </>
       ) : (
@@ -130,10 +141,24 @@ export function Companion({ hub, onSettings, banner }: { hub: Hub; onSettings: (
             <section>
               <div style={section}>Chat</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
+                {msgs.length === 0 && <ChatIntro compact />}
                 {msgs.map(m => <MessageView key={m.id} hub={hub} chatKey={proj.id} m={m} compact />)}
                 <div ref={setChatEnd} />
               </div>
               <Composer hub={hub} compact />
+            </section>
+            <section style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+              {confirmRemove === proj.id ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span style={{ fontSize: 13 }}>Remove <b>{proj.name}</b> from the library on all your devices? Files on your computers aren't touched.</span>
+                  <div className="row">
+                    <button onClick={() => { hub.removeProject(proj.id); setConfirmRemove(null); }} style={{ flex: 1, minHeight: 44, borderRadius: 12, border: 0, background: 'var(--danger)', color: '#fff', fontWeight: 600, fontSize: 13 }}>Remove</button>
+                    <button onClick={() => setConfirmRemove(null)} style={{ flex: 1, minHeight: 44, borderRadius: 12, border: '1px solid var(--line-3)', background: 'none', fontWeight: 600, fontSize: 13 }}>Keep</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setConfirmRemove(proj.id)} style={{ width: '100%', minHeight: 44, borderRadius: 12, border: '1px solid var(--line-3)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: 13 }}>Remove project</button>
+              )}
             </section>
           </div>
         </div>

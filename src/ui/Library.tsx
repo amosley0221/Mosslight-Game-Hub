@@ -59,7 +59,7 @@ export function tileInfo(p: Project) {
   };
 }
 
-export function Library({ hub, onNew }: { hub: Hub; onNew: () => void }) {
+export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => void; onSettings: () => void }) {
   const { data } = hub;
   const builds = data.projects.reduce((n, p) => n + p.builds.length, 0);
   return (
@@ -75,6 +75,20 @@ export function Library({ hub, onNew }: { hub: Hub; onNew: () => void }) {
           <button className="btn-accent" onClick={onNew}>New project</button>
         </div>
       </div>
+      {data.projects.length === 0 && (
+        <section className="card rise" style={{ padding: 22, marginBottom: 22, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 760 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Welcome to Mosslight</h2>
+          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13, lineHeight: 1.6 }}>
+            Your library is empty. Start a <b>New project</b>{isDesktop ? <>, or <b>Open local folder</b> to import an existing Unreal, Unity, Godot or web game</> : null}.
+            Then open <b>⚙ Settings</b> to turn on sync (so your other devices see the same library) and connect Grok, Claude and Codex.
+          </p>
+          <div className="row wrap">
+            <button className="btn-accent" onClick={onNew}>New project</button>
+            {isDesktop && <button className="btn" onClick={() => void hub.openFolder()}>Open local folder</button>}
+            <button className="btn" onClick={onSettings}>Open Settings</button>
+          </div>
+        </section>
+      )}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
         {data.projects.map(p => {
           const t = tileInfo(p);

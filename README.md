@@ -21,7 +21,7 @@ All devices share one library through a private GitHub repo (Settings → Sync a
 
 **Full setup guide (sync + agents): [docs/SETUP.md](docs/SETUP.md).**
 
-1. Open **Settings (⚙)** and add API keys for the agents you want live. Any agent without a key replies in simulated mode.
+1. Open **Settings (⚙)** and add API keys for the agents you want live. An agent without a key or local CLI replies with a short "not set up yet" note and changes nothing.
    - **Claude**: an Anthropic key, or switch Claude to **Local** to use your installed Claude Code CLI (`claude`) inside the project folder.
    - **Codex**: an OpenAI key, or switch Codex to **Local** to use the Codex CLI (`codex`). Local mode can actually build your game.
    - **Grok**: an xAI key. This also turns on concept-art image generation.

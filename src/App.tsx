@@ -63,7 +63,7 @@ export default function App() {
   if (platform === 'android') {
     return (
       <>
-        <Companion hub={hub} onSettings={() => setShowSettings(true)} banner={banner} />
+        <Companion hub={hub} onSettings={() => setShowSettings(true)} onNew={() => setShowNew(true)} banner={banner} />
         <div data-theme={settings.theme}>{overlays}</div>
       </>
     );
@@ -75,11 +75,11 @@ export default function App() {
       <Header hub={hub} onSettings={() => setShowSettings(true)} />
       <div style={{ display: 'grid', gridTemplateColumns: ui.chatOpen ? 'minmax(0,1fr) clamp(300px, 32vw, 400px)' : 'minmax(0,1fr)', minHeight: 0 }}>
         <main className="main">
-          {ui.view === 'library' && <Library hub={hub} onNew={() => setShowNew(true)} />}
+          {ui.view === 'library' && <Library hub={hub} onNew={() => setShowNew(true)} onSettings={() => setShowSettings(true)} />}
           {ui.view === 'assets' && <Assets hub={hub} />}
           {ui.view === 'integrations' && <Integrations hub={hub} />}
           {ui.view === 'project' && proj && <Project key={proj.id} hub={hub} p={proj} />}
-          {ui.view === 'project' && !proj && <Library hub={hub} onNew={() => setShowNew(true)} />}
+          {ui.view === 'project' && !proj && <Library hub={hub} onNew={() => setShowNew(true)} onSettings={() => setShowSettings(true)} />}
         </main>
         {ui.chatOpen && <ChatRail hub={hub} />}
       </div>

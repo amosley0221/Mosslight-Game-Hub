@@ -57,11 +57,11 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
               </button>
             ))}
             {confirmRemove ? (
-              <span className="row" style={{ fontSize: 12 }}>Remove {p.name} from the hub?
+              <span className="row wrap" style={{ fontSize: 12 }}>Remove {p.name} from the library on all your devices? Files on disk are not touched.
                 <button className="btn-ghost" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => hub.removeProject(p.id)}>Remove</button>
                 <button className="btn-ghost" onClick={() => setConfirmRemove(false)}>Keep</button>
               </span>
-            ) : <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, color: 'var(--muted)' }} onClick={() => setConfirmRemove(true)}>Remove</button>}
+            ) : <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, color: 'var(--muted)' }} onClick={() => setConfirmRemove(true)}>Remove project</button>}
           </div>
         </div>
       </div>
