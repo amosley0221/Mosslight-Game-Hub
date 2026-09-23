@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.12.2] - 2026-09-23
+
+### Fixed
+- **A model name that isn't a model id no longer fails as a mystery 404.** A saved API model like "Claude" (a label, not `claude-opus-5`) is now replaced by that agent's default on launch, and if a provider does reject a model, the reply says which model and where to change it instead of showing `404 not_found_error`.
+
 ## [0.12.1] - 2026-09-23
 
 ### Fixed

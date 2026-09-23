@@ -83,6 +83,19 @@ export function stamp(prev: HubData, next: HubData): HubData {
   };
 }
 
+/**
+ * A saved model must look like a provider's model id ("claude-opus-5", "grok-4"), not a label
+ * like "Claude" — a name that reaches the API as a 404 that reads like an outage. Anything that
+ * can't be a model id falls back to the default for that agent.
+ */
+const looksLikeModelId = (m: unknown) => typeof m === 'string' && /^[a-z][a-z0-9]*[.\-_:]/.test(m.trim());
+type Models = Settings['models'];
+function fixModels(defaults: Models, saved: Partial<Models> | undefined): Models {
+  const out = { ...defaults };
+  for (const [k, v] of Object.entries(saved || {})) if (looksLikeModelId(v)) out[k as keyof Models] = (v as string).trim();
+  return out;
+}
+
 function loadSettings(): Settings {
   const d = defaultSettings();
   try {
@@ -91,7 +104,7 @@ function loadSettings(): Settings {
       // Before 0.4 there was only a Local/Remote switch; Remote (the default) becomes Auto = local first.
       const legacy = (a: AgentId): AgentMode => (s.remote && s.remote[a] === false ? 'local' : 'auto');
       const mode = s.mode || { claude: legacy('claude'), codex: legacy('codex'), grok: 'remote' };
-      return { ...d, ...s, mode: { ...d.mode, ...mode, grok: 'remote' }, models: { ...d.models, ...s.models }, localModels: { ...(s.localModels || {}) }, tools: { ...d.tools, ...s.tools } };
+      return { ...d, ...s, mode: { ...d.mode, ...mode, grok: 'remote' }, models: fixModels(d.models, s.models), localModels: { ...(s.localModels || {}) }, tools: { ...d.tools, ...s.tools } };
     }
   } catch { /* defaults */ }
   return d;

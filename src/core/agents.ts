@@ -366,11 +366,20 @@ export async function listModels(agent: AgentId): Promise<string[]> {
 
 // ── Entry points ───────────────────────────────────────────────────────────────
 
-function callApi(agent: AgentId, key: string, model: string, system: string, text: string, io: RunIO) {
+async function callApi(agent: AgentId, key: string, model: string, system: string, text: string, io: RunIO) {
   const files = io.files || [];
-  if (agent === 'claude') return callClaudeApi(key, model, system, text, io, files);
-  if (agent === 'codex') return callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text, io, true, files);
-  return callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text, io, false, files);
+  try {
+    if (agent === 'claude') return await callClaudeApi(key, model, system, text, io, files);
+    if (agent === 'codex') return await callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text, io, true, files);
+    return await callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text, io, false, files);
+  } catch (e) {
+    // A rejected model reads like an outage otherwise ("404 not_found_error"), so name the cause.
+    const msg = String((e as Error)?.message || e);
+    if (/\b404\b|not_found|does not exist|unknown model|model.*not found/i.test(msg)) {
+      throw new Error(`${AGENTS[agent].name}'s API model "${model}" isn't available on this key. Open ⚙ Settings → Agents → ${AGENTS[agent].name} → API → Load models and pick one.`);
+    }
+    throw e;
+  }
 }
 
 type Raw = { text: string; tokens: number; via: string; stopped?: boolean; note?: string };
