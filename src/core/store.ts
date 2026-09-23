@@ -295,6 +295,19 @@ export function useHub() {
           // Each new task gets its card in Docs/Tasks, so it exists in the repository too.
           newCards.push(...fresh);
         }
+        // Cast and places an agent named while working go straight into the story bible.
+        if (res.entries?.length) {
+          const story = [...(q.story || [])];
+          for (const e of res.entries.slice(0, 5)) {
+            const title = e.section.replace(/^\w/, c => c.toUpperCase());
+            let sec = story.find(s => s.title.toLowerCase() === title.toLowerCase());
+            if (!sec) { sec = { id: uid(), title, entries: [], ts: now() }; story.push(sec); }
+            if (sec.entries.some(x => x.name.toLowerCase() === e.name.toLowerCase())) continue;
+            sec.entries = [...sec.entries, { id: uid(), name: e.name, body: e.body, images: [], ts: now() }];
+            q.activity = [A(agent, `Added ${e.name} to ${title}`), ...q.activity];
+          }
+          q.story = story.map(s => ({ ...s }));
+        }
         if (res.art?.length) { q.art = [...res.art.map(a => ({ id: uid(), title: a.title, prompt: a.prompt, imagePath: a.imagePath, ts: now() })), ...q.art]; q.activity = [...res.art.map(a => A('grok', 'Generated concept: ' + a.title)), ...q.activity]; }
         if (res.builds?.length) {
           const fresh = res.builds.map(b => ({ id: uid(), name: b.name, path: b.path, kind: b.kind || kindOfFile(b.path), platform: b.platform || platformOfFile(b.path), by: 'codex' as AgentId, ts: now(), device: isUrl(b.path) ? undefined : deviceId }));
@@ -530,6 +543,111 @@ export function useHub() {
       return 0;
     }
   }, [importEntries, toast]);
+
+  /** "cal-mercer-bio.md" → "Cal Mercer". */
+  const nameFromFile = (file: string) => baseName(file)
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_ ]?(bio|biography|sheet|profile|ref|reference|card)$/i, '')
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map(w => w[0].toUpperCase() + w.slice(1))
+    .join(' ')
+    .trim();
+
+  const slugOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  /**
+   * Everything in the project that looks like a member of this section: a folder per name, and
+   * documents named after someone ("cal-mercer-bio.md"). Each comes back with its pictures.
+   */
+  const suggestEntries = useCallback(async (pid: string, title: string): Promise<{ name: string; images: string[]; source?: string }[]> => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const root = p && localFolder(p)?.path;
+    if (!isDesktop || !root) { toast('This project has no folder on this computer'); return []; }
+    const sec = (p.story || []).find(s => s.title.toLowerCase() === title.toLowerCase());
+    const taken = new Set((sec?.entries || []).map(e => slugOf(e.name)));
+    const want = FOLDER_ALIASES[title.toLowerCase()] || [title.toLowerCase()];
+
+    const found = new Map<string, { name: string; images: string[]; source?: string }>();
+    const add = (name: string, source?: string) => {
+      const key = slugOf(name);
+      if (!key || taken.has(key) || name.length < 2) return;
+      const at = found.get(key);
+      if (at) { if (source && !at.source) at.source = source; return; }
+      found.set(key, { name, images: [], source });
+    };
+
+    try {
+      // Folders named after each member — the usual way art is kept.
+      const scan = await scanFolder(root);
+      for (const dir of scan.entries.filter(e => e.is_dir && want.includes(e.name.toLowerCase()))) {
+        const inner = await scanFolder(await joinPath(root, dir.name)).catch(() => null);
+        for (const e of inner?.entries || []) if (e.is_dir) add(e.name, `${dir.name}/${e.name}`);
+      }
+      // Documents named after someone, anywhere in the project.
+      const docs = await findFiles(root, ['md', 'txt'], 1200).catch(() => []);
+      for (const d of docs) if (/bio|profile|sheet|character|cast/i.test(d.name)) add(nameFromFile(d.name), `${d.folder ? d.folder + '/' : ''}${d.name}`);
+
+      // Pictures for each, by folder or file name.
+      const pics = await findFiles(root, ['png', 'jpg', 'jpeg', 'webp'], 4000).catch(() => []);
+      for (const pic of pics) {
+        const hay = slugOf(`${pic.folder} ${pic.name}`);
+        for (const [key, v] of found) if (v.images.length < 30 && hay.includes(key)) v.images.push(pic.path);
+      }
+    } catch (e) {
+      toast(String((e as Error)?.message || e));
+    }
+    return [...found.values()].sort((a, b) => b.images.length - a.images.length).slice(0, 40);
+  }, [toast]);
+
+  /** Bios for a list of names, returned for review instead of written straight in. */
+  const proposeBios = useCallback(async (pid: string, title: string, names: string[]): Promise<Record<string, string>> => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    if (!p || !names.length) return {};
+    const text = [
+      `For each of these ${title.toLowerCase()} in ${p.name}, give the bio the project's own files already support — do not invent anything that isn't written down.`,
+      names.map(n => `- ${n}`).join('\n'),
+      '',
+      'Search the whole project for each name in every spelling it might use (Cal Mercer → cal-mercer, cal_mercer, CalMercer, "Cal Mercer") — bio, cast and character sheets anywhere in the repository, and the design and story documents.',
+      'Where a written bio exists, condense it faithfully: keep its facts, age, role and relationships, contradict nothing. Where nothing is written, say in one line what is known and mark the rest unknown.',
+      '40–80 words each, plain prose, present tense.',
+      'Reply with JSON only: {"entries":[{"name":"<exactly as listed>","body":"<bio>","source":"<file, or none>"}]}',
+    ].join('\n');
+    push(pid, { id: uid(), type: 'user', text });
+    const res = await dispatch(pid, 'claude', text, `reading the ${title.toLowerCase()}`);
+    if (res.error || res.offline || res.stopped || !res.text) return {};
+    try {
+      const json = res.text.slice(res.text.indexOf('{'), res.text.lastIndexOf('}') + 1);
+      const parsed = JSON.parse(json) as { entries?: { name?: string; body?: string }[] };
+      return Object.fromEntries((parsed.entries || []).filter(e => e.name && e.body).map(e => [slugOf(e.name!), e.body!.trim()]));
+    } catch {
+      toast("Couldn't read that reply as bios — it's still in the chat");
+      return {};
+    }
+  }, [dispatch, push, toast]);
+
+  /** Adds reviewed entries, with their pictures and notes. */
+  const addEntries = useCallback((pid: string, title: string, list: { name: string; images: string[]; body?: string }[]) => {
+    if (!list.length) return;
+    updProj(pid, q => {
+      const story = [...(q.story || [])];
+      let sec = story.find(s => s.title.toLowerCase() === title.toLowerCase());
+      if (!sec) { sec = { id: uid(), title, entries: [], ts: now() }; story.push(sec); }
+      const have = new Set(sec.entries.map(e => slugOf(e.name)));
+      const fresh = list.filter(x => !have.has(slugOf(x.name))).map(x => ({ id: uid(), name: x.name, body: x.body, images: x.images, cover: x.images[0], ts: now() }));
+      sec.entries = [...sec.entries, ...fresh];
+      return { ...q, story: story.map(s => (s.id === sec!.id ? { ...sec! } : s)), activity: [A('grok', `Added ${fresh.length} to ${title}`), ...q.activity] };
+    });
+    toast(`Added ${list.length} to ${title}`);
+  }, [toast, updProj]);
+
+  /** One name you typed: find its pictures and its bio, ready to review. */
+  const buildEntry = useCallback(async (pid: string, title: string, name: string) => {
+    const all = await suggestEntries(pid, title);
+    const hit = all.find(x => slugOf(x.name) === slugOf(name)) || { name, images: [] as string[], source: undefined };
+    const bios = await proposeBios(pid, title, [hit.name]);
+    return { ...hit, body: bios[slugOf(hit.name)] };
+  }, [proposeBios, suggestEntries]);
 
   /** Fills in the blank bios in a section, from what the project's own files say. */
   const draftEntries = useCallback(async (pid: string, sid: string, agent: AgentId = 'claude') => {
@@ -1452,7 +1570,7 @@ export function useHub() {
     addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief, syncCards, addArtImages,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
-    draftSummary, importEntries, autoImportEntries, draftEntries,
+    draftSummary, importEntries, autoImportEntries, draftEntries, suggestEntries, proposeBios, addEntries, buildEntry,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
     busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,

@@ -240,6 +240,8 @@ export interface AgentResult {
   builds?: { name: string; path: string; kind?: BuildKind; platform?: Platform }[];
   code?: { title: string; file?: string; lang?: string; code: string }[];
   gdd?: { title: string; body: string };
+  /** Story bible entries an agent recorded while working: cast, places, vehicles. */
+  entries?: { section: string; name: string; body?: string }[];
   handoff?: { to: AgentId; reason: string; prompt?: string };
   error?: boolean;
 }

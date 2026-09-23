@@ -55,11 +55,81 @@ function EntryView({ hub, p, section, entry, onClose }: { hub: Hub; p: Project; 
   );
 }
 
+type Proposal = { name: string; images: string[]; body?: string; source?: string; on: boolean };
+
+/** What the project looks like it contains — review, edit, then add. Nothing is written until you say so. */
+function SuggestModal({ hub, p, title, seed, onClose }: { hub: Hub; p: Project; title: string; seed?: string; onClose: () => void }) {
+  const [list, setList] = useState<Proposal[] | null>(null);
+  const [step, setStep] = useState('Looking through the project…');
+  const [typed, setTyped] = useState(seed || '');
+
+  const look = async (only?: string) => {
+    setList(null);
+    setStep(only ? `Looking for ${only}…` : 'Looking through the project…');
+    const found = only ? [await hub.buildEntry(p.id, title, only)] : await hub.suggestEntries(p.id, title);
+    if (!found.length) { setList([]); return; }
+    if (!only) {
+      setStep(`Reading what's written about ${found.length} ${title.toLowerCase()}…`);
+      const bios = await hub.proposeBios(p.id, title, found.map(f => f.name));
+      setList(found.map(f => ({ ...f, body: bios[f.name.toLowerCase().replace(/[^a-z0-9]/g, '')], on: true })));
+      return;
+    }
+    setList(found.map(f => ({ ...f, on: true })));
+  };
+  useEffect(() => { void look(seed || undefined); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const set = (i: number, patch: Partial<Proposal>) => setList(l => l && l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const chosen = (list || []).filter(x => x.on && x.name.trim());
+
+  return (
+    <Modal width={820} onClose={onClose} gap={14}>
+      <div className="row" style={{ gap: 10 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, flex: 1 }}>{title} found in {p.name}</h2>
+        <button className="x" style={{ fontSize: 20 }} onClick={onClose}>×</button>
+      </div>
+
+      <div className="row" style={{ gap: 8 }}>
+        <input value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && typed.trim()) void look(typed.trim()); }} placeholder={`Or type a name — "Cal Mercer" — and it builds that one`} className="input" style={{ flex: 1 }} />
+        <button className="btn" disabled={!typed.trim()} onClick={() => void look(typed.trim())}>Build profile</button>
+        <button className="btn" onClick={() => void look()}>Scan again</button>
+      </div>
+
+      {!list && <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>{step}</p>}
+      {list && !list.length && <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>Nothing found. Type a name above, or use Import from folder… if the art lives somewhere unusual.</p>}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '52vh', overflow: 'auto' }}>
+        {(list || []).map((x, i) => (
+          <div key={x.name + i} className="card" style={{ padding: 12, display: 'grid', gridTemplateColumns: '22px 96px minmax(0,1fr)', gap: 12, alignItems: 'start', opacity: x.on ? 1 : 0.5 }}>
+            <input type="checkbox" checked={x.on} onChange={e => set(i, { on: e.target.checked })} style={{ width: 18, height: 18, marginTop: 4, accentColor: 'var(--accent)' }} />
+            {x.images[0] ? <Pic src={x.images[0]} alt={x.name} height={96} /> : <div style={{ height: 96, display: 'grid', placeItems: 'center', background: 'var(--well)', borderRadius: 10, color: 'var(--dim)', fontSize: 10 }}>no picture</div>}
+            <div style={{ minWidth: 0 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <input value={x.name} onChange={e => set(i, { name: e.target.value })} style={{ flex: 1, background: 'none', border: 0, fontSize: 15, fontWeight: 600, padding: 0, minWidth: 0 }} />
+                <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{x.images.length} picture{x.images.length === 1 ? '' : 's'}</span>
+              </div>
+              {x.source && <div className="mono" style={{ fontSize: 10, color: 'var(--dim)', margin: '2px 0 6px' }}>{x.source}</div>}
+              <textarea value={x.body || ''} onChange={e => set(i, { body: e.target.value })} rows={3} placeholder="No notes found — write something, or leave it empty" style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 8, padding: 9, fontSize: 12.5, lineHeight: 1.55, resize: 'vertical', color: 'var(--text-2)' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+        <button className="btn" style={{ background: 'none', color: 'var(--text-2)' }} onClick={onClose}>Cancel</button>
+        <button className="btn-accent" disabled={!chosen.length} style={{ padding: '9px 14px' }} onClick={() => { hub.addEntries(p.id, title, chosen); onClose(); }}>
+          Add {chosen.length || ''} to {title}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function SectionView({ hub, p, s }: { hub: Hub; p: Project; s: StorySection }) {
   const [title, setTitle] = useState(s.title);
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState('');
   const [busy, setBusy] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const run = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
   useEffect(() => setTitle(s.title), [s.title]);
   const entry = s.entries.find(e => e.id === open);
@@ -74,9 +144,7 @@ function SectionView({ hub, p, s }: { hub: Hub; p: Project; s: StorySection }) {
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
         <input value={title} onChange={e => setTitle(e.target.value)} onBlur={() => title.trim() && title !== s.title && hub.renameSection(p.id, s.id, title.trim())} style={{ background: 'none', border: 0, fontSize: 16, fontWeight: 600, padding: 0, minWidth: 0 }} />
         <div className="row wrap" style={{ gap: 6 }}>
-          {isDesktop && (
-            <button className="btn-ghost" disabled={busy} onClick={() => void run(() => hub.autoImportEntries(p.id, s.title))}>Build from project</button>
-          )}
+          {isDesktop && <button className="btn-ghost" onClick={() => setSuggesting(true)}>Find in project…</button>}
           {isDesktop && (
             <button className="btn-ghost" disabled={busy} title={`Pick a folder that holds one folder per ${s.title.replace(/s$/, '').toLowerCase()}`} onClick={() => void run(async () => {
               const dir = await pickFolder();
@@ -108,6 +176,7 @@ function SectionView({ hub, p, s }: { hub: Hub; p: Project; s: StorySection }) {
         </div>
       </div>
       {entry && <EntryView hub={hub} p={p} section={s} entry={entry} onClose={() => setOpen(null)} />}
+      {suggesting && <SuggestModal hub={hub} p={p} title={s.title} onClose={() => setSuggesting(false)} />}
     </section>
   );
 }

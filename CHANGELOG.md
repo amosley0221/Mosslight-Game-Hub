@@ -3,6 +3,15 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.20.0] - 2026-09-23
+
+### Added
+- **Find in project — it proposes, you approve.** A story section now offers to look through the whole project for what belongs in it: folders named after someone (`Characters/Cal Mercer/`), and documents named after someone anywhere in the repository (`Art/Deliveries/CastReferenceSheetsV1/cal-mercer-bio.md`). Each proposal arrives with its pictures, a bio condensed from the file it came from, and the source path — tick the ones you want, edit the name or notes inline, and **Add** writes only those. Nothing is created until you say so.
+- **Type a name and it builds that profile.** In the same panel: type "Cal Mercer", press Build profile, and it gathers that person's pictures and whatever the project has written about them, ready to review.
+- **New projects fill their own story bible.** When an agent names a character, location, map, vehicle or faction that the game will keep, it records it: `ENTRY: Characters | Ray Calder — drives the RV`. The entry appears in the Story tab as the project is planned, instead of being reconstructed later. Duplicates are ignored, five per reply, and the lines are stripped from what you read.
+
+### Changed
+- **Import from folder…** stays as the fallback for art kept somewhere unusual.
 ## [0.19.1] - 2026-09-23
 
 ### Added

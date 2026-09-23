@@ -129,7 +129,10 @@ HANDOFF: <${others.join('|')}> — <one-sentence reason>
 <a complete, self-contained instruction the teammate can act on without seeing this chat: the goal, relevant files/components, exact values (sizes, colours, spacing, names), constraints, and acceptance criteria>
 PROMPT>>>
 The user reviews and approves that prompt before it runs. The PROMPT block does not count toward your word limit. Only one HANDOFF per reply.
-If you create follow-up work items, append lines: TASK: <short title>. Max 3.`;
+If you create follow-up work items, append lines: TASK: <short title>. Max 3.
+When you name someone or somewhere the game will keep — a character, location, map, vehicle, faction — record it so the project's story bible holds it from the start, one line each, max 5:
+ENTRY: <Characters|Locations|Maps|Vehicles|Factions> | <name> — <one sentence on who or what it is>
+Only for things that are part of the game, and only the first time each is named. These lines are stripped from your reply.`;
 };
 
 const LOCAL_NOTE = 'You are running inside the project folder on the user\'s computer and may read and edit its files to complete the task. When you finish, summarise what you changed (files and why) in a few lines.';
