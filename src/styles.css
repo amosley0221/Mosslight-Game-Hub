@@ -67,3 +67,4 @@ textarea:focus, input:focus, select:focus { outline: none; }
 .md pre { margin: 6px 0; padding: 10px 12px; font-family: var(--mono); font-size: 11.5px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; overflow: auto; white-space: pre; }
 .md code { font-family: var(--mono); font-size: 12px; }
 @media (max-width: 760px) { .main { padding: 18px 16px 32px; } .project-head { grid-template-columns: 1fr !important; } .hide-narrow { display: none !important; } }
+[data-off="true"] { opacity: .45; }

@@ -63,6 +63,16 @@ fn save_bytes(request: tauri::ipc::Request<'_>) -> Result<String, String> {
     Ok(path)
 }
 
+/// Returns a file's bytes as a raw IPC response (used to upload APKs and images to sync).
+#[tauri::command]
+fn read_file_bytes(path: String, max: u64) -> Result<tauri::ipc::Response, String> {
+    let len = std::fs::metadata(&path).map_err(|e| format!("Can't read {path}: {e}"))?.len();
+    if len > max {
+        return Err(format!("{path} is too large to sync ({} MB)", len / 1_048_576));
+    }
+    std::fs::read(&path).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn copy_file(src: String, dest: String) -> Result<String, String> {
     let d = PathBuf::from(&dest);
@@ -322,6 +332,7 @@ pub fn run_app() {
         .invoke_handler(tauri::generate_handler![
             scan_folder,
             save_bytes,
+            read_file_bytes,
             copy_file,
             remove_file,
             secret_get,

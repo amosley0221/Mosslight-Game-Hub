@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AGENTS, ENGINES, ORDER, PLAT_LABEL, TAGS, engineName } from '../core/constants';
-import type { Hub } from '../core/store';
+import { totalUsage, type Hub } from '../core/store';
 import type { Build, Project } from '../core/types';
 import { pct } from '../core/util';
 import { isDesktop } from '../platform';
@@ -8,6 +8,7 @@ import { Dot, ImageSlot, Modal, asset, coverOf } from './common';
 
 export function Header({ hub, onSettings }: { hub: Hub; onSettings: () => void }) {
   const { ui, data, proj, patchUi } = hub;
+  const usage = totalUsage(data);
   const crumb = proj ? proj.name : ui.view === 'integrations' ? 'Integrations' : ui.view === 'assets' ? 'Asset library' : 'Library';
   return (
     <header className="header">
@@ -21,7 +22,7 @@ export function Header({ hub, onSettings }: { hub: Hub; onSettings: () => void }
         {ORDER.map(a => (
           <div key={a} title={AGENTS[a].role} className="row" style={{ gap: 6, padding: '4px 10px 4px 6px', borderRadius: 999, border: '1px solid var(--line)', background: 'var(--panel)', fontSize: 12, color: 'var(--text-2)' }}>
             <span className="glyph" style={{ width: 16, height: 16, background: AGENTS[a].color, fontSize: 9 }}>{AGENTS[a].glyph}</span>{AGENTS[a].name}
-            <span className="mono" style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{data.usage[a].calls} calls</span>
+            <span className="mono" style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{usage[a].calls} calls</span>
           </div>
         ))}
       </div>
@@ -33,9 +34,15 @@ export function Header({ hub, onSettings }: { hub: Hub; onSettings: () => void }
   );
 }
 
-export function BuildButton({ b, onClick }: { b: Build; onClick: () => void }) {
+/** Click handler + "can this run here?" dimming for any build launch button. */
+export function launchProps(hub: Hub, p: Project, b: Build) {
+  const l = hub.launchable(b);
+  return { onClick: () => void hub.launch(p, b), title: l.ok ? b.path : l.why, 'data-off': l.ok ? undefined : 'true' };
+}
+
+export function BuildButton({ b, hub, p }: { b: Build; hub: Hub; p: Project }) {
   return (
-    <button className="build-btn" title={b.path} onClick={onClick}>
+    <button className="build-btn" {...launchProps(hub, p, b)}>
       <span style={{ fontSize: 9 }}>▶</span><span className="ellipsis">{b.name}</span><span className="mono" style={{ fontSize: 9, color: 'var(--muted)' }}>{PLAT_LABEL[b.platform] || b.kind}</span>
     </button>
   );
@@ -96,7 +103,7 @@ export function Library({ hub, onNew }: { hub: Hub; onNew: () => void }) {
               </button>
               {p.builds.length > 0 && (
                 <div className="row wrap" style={{ gap: 6, padding: '0 16px 14px' }}>
-                  {p.builds.slice(0, 2).map(b => <BuildButton key={b.id} b={b} onClick={() => void hub.launch(p, b)} />)}
+                  {p.builds.slice(0, 2).map(b => <BuildButton key={b.id} b={b} hub={hub} p={p} />)}
                 </div>
               )}
             </div>

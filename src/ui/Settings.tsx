@@ -6,6 +6,7 @@ import type { AgentId } from '../core/types';
 import { detectTools, getSecret, isDesktop, openExternal, platform, setSecret, type ToolStatus } from '../platform';
 import { currentVersion, releasesUrl } from '../platform/updates';
 import { Glyph, Modal, RichText, Switch, useUpdate } from './common';
+import { SyncSettings } from './SyncSettings';
 
 /** Paste-an-API-key dialog. Keys go to the OS keychain (desktop) / app-private storage (Android). */
 export function KeyModal({ name, label, url, onClose, onSaved }: { name: string; label: string; url?: string; onClose: () => void; onSaved?: (has: boolean) => void }) {
@@ -143,6 +144,7 @@ export function Settings({ hub, onClose }: { hub: Hub; onClose: () => void }) {
           })}
         </div>
       </div>
+      <SyncSettings hub={hub} />
       <div>
         <div className="eyebrow" style={{ marginBottom: 8 }}>Updates</div>
         <div className="row wrap" style={{ justifyContent: 'space-between', gap: 12, background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px' }}>
@@ -162,7 +164,7 @@ export function Settings({ hub, onClose }: { hub: Hub; onClose: () => void }) {
       <div className="row wrap" style={{ justifyContent: 'space-between', gap: 12, background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px' }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600 }}>{mobile ? 'Desktop app' : 'Android companion'}</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{mobile ? 'Windows and macOS builds are on the releases page.' : 'Install the APK from the releases page. Live sync between desktop and phone is coming in a later release.'}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{mobile ? 'Windows and macOS builds are on the releases page.' : 'Install the APK from the releases page, then use Pair a phone above.'}</div>
         </div>
         <button className="btn-accent" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => void openExternal(releasesUrl)}>Download</button>
       </div>

@@ -7,7 +7,7 @@ import { A, D, H, T, now, uid } from './util';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Raw = any;
 
-function seedProjects(): Pick<HubData, "projects" | "usage" | "messages"> {
+function seedProjects(): Pick<HubData, "projects" | "usageBy" | "messages"> {
   const p1: Raw = { id:'hollowmere', name:'Hollowmere', tagline:'A cozy-dark fishing town where the tide brings back the drowned. Rebuild the harbor, bargain with tide gods, keep the lights on.', tags:['3D','Stylized','PC / Console','Open world'], engines:['unreal'], platforms:['windows','mac'], stack:{ languages:['C++','Blueprints'], libraries:['Niagara','MetaSounds','Gameplay Ability System'], tools:['Perforce','RenderDoc'] }, folder:{ name:'Hollowmere' },
     code:[{id:uid(),agent:'claude',title:'Tide level sampler',file:'Source/Hollowmere/TideSubsystem.cpp',lang:'cpp',ts:now()-2*D,code:'float UTideSubsystem::SampleLevel(float WorldTime) const\n{\n    const float Phase = FMath::Fmod(WorldTime, CycleSeconds) / CycleSeconds;\n    const float Base  = FMath::Sin(Phase * 2.f * PI);\n    return FMath::Lerp(LowTideZ, HighTideZ, (Base + 1.f) * 0.5f) + StormOffset;\n}'},{id:uid(),agent:'codex',title:'Lantern HUD material — fog fade',file:'Content/UI/M_LanternFade.usf',lang:'hlsl',ts:now()-3*D,code:'float fade = saturate((Depth - FogStart) / (FogEnd - FogStart));\nreturn lerp(LanternColor, FogColor, fade * FogDensity);'}],
     tasks:[T('grok','Core pitch and three-act outline','done',5*D),T('grok','Concept: harbor at low tide','done',4*D),T('grok','Name and personality for the three tide gods','todo',1*D),T('codex','HUD style guide (lantern motif)','done',3*D),T('codex','Harbor blockout & lighting pass','doing',2*D),T('codex','Fog and water shader look-dev','todo',1*D),T('claude','Tide simulation system (Blueprint → C++)','doing',2*D),T('claude','Fishing minigame controller','todo',1*D),T('claude','Save/load for tide state','todo',6*H)],
@@ -31,7 +31,7 @@ function seedProjects(): Pick<HubData, "projects" | "usage" | "messages"> {
     activity:[A('codex','Exported web build orbital-drift',8*H),A('claude','Started Drift physics prototype',1*D)] };
   return {
     projects: [p1, p2, p3].map(norm),
-    usage:{ grok:{calls:14,tokens:31200}, codex:{calls:9,tokens:22800}, claude:{calls:21,tokens:58400} },
+    usageBy:{ demo:{ grok:{calls:14,tokens:31200}, codex:{calls:9,tokens:22800}, claude:{calls:21,tokens:58400} } },
     messages:{ global:[{ id:uid(), type:'agent', agent:'claude', route:'hub', pending:false, text:'Mosslight online. Type anything — I route ideas and concept art to Grok, visual design and test builds to Codex, and code to myself. Open a project tile to scope the chat to that game.' }] },
   };
 }

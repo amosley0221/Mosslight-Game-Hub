@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { AGENTS, ASSET_KINDS, ORDER, PLATFORMS, PLAT_LABEL, TOOLS, WEB_ENGINES, engineName } from '../core/constants';
-import type { Hub } from '../core/store';
+import { totalUsage, type Hub } from '../core/store';
 import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
 import { copyText, isDesktop } from '../platform';
 import { Dot, Glyph, ImageSlot, coverOf } from './common';
-import { TagPicks, recommend, tileInfo } from './Library';
+import { TagPicks, launchProps, recommend, tileInfo } from './Library';
 
 const ACTIONS: Record<AgentId, string> = { grok: 'var(--ag-grok)', codex: 'var(--ag-codex)', claude: 'var(--ag-claude)' };
 
@@ -52,7 +52,7 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
               <div className="bar" style={{ height: 6, borderRadius: 3 }}>{t.shares.map(s => <div key={s.a} style={{ height: '100%', width: s.pct, background: AGENTS[s.a].color }} />)}</div>
             </div>
             {p.builds.map(b => (
-              <button key={b.id} title={b.path} onClick={() => void hub.launch(p, b)} className="row" style={{ background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', borderRadius: 10, padding: '9px 14px', fontSize: 12, fontWeight: 600 }}>
+              <button key={b.id} {...launchProps(hub, p, b)} className="row" style={{ background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', borderRadius: 10, padding: '9px 14px', fontSize: 12, fontWeight: 600 }}>
                 <span style={{ fontSize: 10 }}>▶</span> {PLAT_LABEL[b.platform]} · {b.name}
               </button>
             ))}
@@ -138,7 +138,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
               <div key={b.id} className="row" style={{ gap: 10, background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '8px 8px 8px 12px' }}>
                 <span className="ellipsis" style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600 }}>{b.name}</span>
                 <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{PLAT_LABEL[b.platform]}</span>
-                <button onClick={() => void hub.launch(p, b)} style={{ background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', borderRadius: 7, padding: '5px 10px', fontSize: 11, fontWeight: 600 }}>▶ Play</button>
+                <button {...launchProps(hub, p, b)} style={{ background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', borderRadius: 7, padding: '5px 10px', fontSize: 11, fontWeight: 600 }}>▶ Play</button>
               </div>
             ))}
             {!p.builds.length && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>No test builds yet — ask Codex to package one.</p>}
@@ -207,7 +207,7 @@ function Builds({ hub, p }: { hub: Hub; p: P }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 820 }}>
         {p.builds.map(b => (
           <div key={b.id} className="card hover-line" style={{ display: 'grid', gridTemplateColumns: '44px minmax(0,1fr) auto', gap: 14, alignItems: 'center', padding: 14 }}>
-            <button onClick={() => void hub.launch(p, b)} style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', fontSize: 14, fontWeight: 700 }}>▶</button>
+            <button {...launchProps(hub, p, b)} style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--ag-codex)', border: 0, color: 'var(--on-agent)', fontSize: 14, fontWeight: 700 }}>▶</button>
             <div style={{ minWidth: 0 }}>
               <div className="ellipsis" style={{ fontWeight: 600, fontSize: 14 }}>{b.name}</div>
               <div className="mono ellipsis" style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>{b.path}</div>
@@ -399,7 +399,7 @@ function Dev({ hub, p }: { hub: Hub; p: P }) {
 }
 
 function UsageTab({ hub }: { hub: Hub }) {
-  const u = hub.data.usage;
+  const u = totalUsage(hub.data);
   const total = ORDER.reduce((n, a) => n + u[a].tokens, 0);
   return (
     <>

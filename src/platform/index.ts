@@ -59,6 +59,8 @@ export const copyFile = (src: string, dest: string) => invoke<string>('copy_file
 export const removeFile = (path: string) => invoke<void>('remove_file', { path });
 export const detectTools = () => (isTauri ? invoke<Record<string, ToolStatus>>('detect_tools') : Promise.resolve({} as Record<string, ToolStatus>));
 export const adbInstall = (apk: string) => invoke<string>('adb_install', { apk });
+/** Reads a local file (desktop only), refusing anything over `max` bytes. */
+export const readFileBytes = async (path: string, max: number) => new Uint8Array(await invoke<ArrayBuffer>('read_file_bytes', { path, max }));
 export const runAgentCli = (program: 'claude' | 'codex', args: string[], stdin: string, cwd?: string) => invoke<string>('run_agent_cli', { program, args, stdin, cwd: cwd || null });
 export const getDesktopDir = async () => (isTauri ? desktopDir() : null);
 export const joinPath = (...parts: string[]) => join(...parts);

@@ -3,12 +3,17 @@ import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from '.
 import { respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, norm, seedData } from './seed';
-import type { AgentId, Asset, Build, HubData, Message, Platform, Project, Settings } from './types';
+import type { AgentId, Asset, Build, HubData, Message, Platform, Project, Settings, Usage } from './types';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
-  adbInstall, copyFile, getDesktopDir, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
-  pickFolder, platform, removeFile, saveBytes, scanFolder, type ScanResult,
+  copyFile, getDesktopDir, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
+  pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, type ScanResult,
 } from '../platform';
+import { OS_LABEL, deviceId, deviceOs, localFolder } from '../sync/device';
+import { SyncEngine, loadSyncConfig, saveSyncConfig, type SyncConfig, type SyncState } from '../sync/engine';
+import { merge, toDoc } from '../sync/merge';
+import { setImageStore, uploadImage } from '../sync/images';
+import { installOrLaunch, uploadApk } from '../sync/apk';
 
 const KEY = 'gdh:state:v3';
 const SKEY = 'gdh:settings:v1';
@@ -16,9 +21,56 @@ const SKEY = 'gdh:settings:v1';
 function loadData(): HubData {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (s && s.projects) return { projects: s.projects.map(norm), usage: s.usage, messages: s.messages || {}, assets: s.assets || [] };
+    if (s && s.projects) {
+      return {
+        projects: s.projects.map(norm), messages: s.messages || {}, assets: s.assets || [],
+        usageBy: s.usageBy || (s.usage ? { [deviceId]: s.usage } : {}), deleted: s.deleted || {}, devices: s.devices || {},
+      };
+    }
   } catch { /* first run */ }
   return seedData();
+}
+
+const ZERO: Record<AgentId, Usage> = { grok: { calls: 0, tokens: 0 }, codex: { calls: 0, tokens: 0 }, claude: { calls: 0, tokens: 0 } };
+
+/** Usage summed over every device that shares the library. */
+export function totalUsage(d: HubData): Record<AgentId, Usage> {
+  const t = { grok: { ...ZERO.grok }, codex: { ...ZERO.codex }, claude: { ...ZERO.claude } };
+  for (const u of Object.values(d.usageBy || {})) for (const a of Object.keys(t) as AgentId[]) { t[a].calls += u[a]?.calls || 0; t[a].tokens += u[a]?.tokens || 0; }
+  return t;
+}
+
+
+/**
+ * Timestamps whatever a local update changed (so other devices can merge it) and turns
+ * removals into deletion markers so they propagate instead of coming back on next sync.
+ */
+function stamp(prev: HubData, next: HubData): HubData {
+  if (prev === next) return next;
+  const t = now();
+  const deleted = { ...(next.deleted || {}) };
+  const pm = new Map(prev.projects.map(p => [p.id, p]));
+  const am = new Map(prev.assets.map(a => [a.id, a]));
+  const nextP = new Set(next.projects.map(p => p.id));
+  const nextA = new Set(next.assets.map(a => a.id));
+  for (const p of prev.projects) if (!nextP.has(p.id)) deleted['p:' + p.id] = t;
+  for (const a of prev.assets) if (!nextA.has(a.id)) deleted['a:' + a.id] = t;
+  const messages: HubData['messages'] = {};
+  for (const [k, list] of Object.entries(next.messages)) {
+    const before = prev.messages[k];
+    if (before === list) { messages[k] = list; continue; }
+    const old = new Map((before || []).map(m => [m.id, m]));
+    const ids = new Set(list.map(m => m.id));
+    for (const m of before || []) if (!ids.has(m.id)) deleted['m:' + m.id] = t;
+    messages[k] = list.map(m => (old.get(m.id) === m ? m : ({ ...m, u: t, ts: m.ts ?? t } as Message)));
+  }
+  return {
+    ...next,
+    messages,
+    deleted,
+    projects: next.projects.map(p => (pm.get(p.id) === p ? p : { ...p, u: t })),
+    assets: next.assets.map(a => (am.get(a.id) === a ? a : { ...a, u: t })),
+  };
 }
 
 function loadSettings(): Settings {
@@ -45,7 +97,8 @@ export interface Ui {
 const BUILD_RE = /\.(lnk|exe|bat|cmd|url|app|command|sh|apk|aab)$/i;
 const platformOfFile = (n: string): Platform => (/\.(apk|aab)$/i.test(n) ? 'android' : /\.(app|command|sh)$/i.test(n) ? 'mac' : /\.html?$/i.test(n) ? 'web' : 'windows');
 const kindOfFile = (n: string) => (/\.(apk|aab)$/i.test(n) ? 'android' : /\.html?$/i.test(n) ? 'web' : 'desktop') as Build['kind'];
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+const isUrl = (p: string) => /^https?:/i.test(p);
+const slug =(s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /** Conventional folder inside a project where linked library assets are copied. */
 function assetFolderFor(p: Project) {
@@ -83,8 +136,8 @@ async function detectFromScan(scan: ScanResult) {
   const names = scan.entries.map(e => e.name);
   const builds: Build[] = [];
   for (const e of scan.entries) {
-    if ((!e.is_dir || /\.app$/i.test(e.name)) && BUILD_RE.test(e.name)) builds.push({ id: uid(), name: e.name, path: await joinPath(scan.path, e.name), kind: kindOfFile(e.name), platform: platformOfFile(e.name), by: 'codex', ts: now() });
-    else if (!e.is_dir && e.name.toLowerCase() === 'index.html') builds.push({ id: uid(), name: e.name, path: await joinPath(scan.path, e.name), kind: 'web', platform: 'web', by: 'codex', ts: now() });
+    if ((!e.is_dir || /\.app$/i.test(e.name)) && BUILD_RE.test(e.name)) builds.push({ id: uid(), name: e.name, path: await joinPath(scan.path, e.name), kind: kindOfFile(e.name), platform: platformOfFile(e.name), by: 'codex', ts: now(), device: deviceId });
+    else if (!e.is_dir && e.name.toLowerCase() === 'index.html') builds.push({ id: uid(), name: e.name, path: await joinPath(scan.path, e.name), kind: 'web', platform: 'web', by: 'codex', ts: now(), device: deviceId });
   }
   let libs: string[] = [];
   const langs: string[] = [];
@@ -117,13 +170,15 @@ async function detectFromScan(scan: ScanResult) {
 }
 
 export function useHub() {
-  const [data, setData] = useState<HubData>(loadData);
+  const [data, setRaw] = useState<HubData>(loadData);
+  const setData = useCallback((fn: (d: HubData) => HubData) => setRaw(prev => stamp(prev, fn(prev))), []);
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [ui, setUi] = useState<Ui>({ view: 'library', pid: null, tab: 'overview', chatOpen: true, input: '', busy: false, forced: null, toast: null });
   const dataRef = useRef(data); dataRef.current = data;
   const settingsRef = useRef(settings); settingsRef.current = settings;
   const uiRef = useRef(ui); uiRef.current = ui;
   const toastTimer = useRef<number>();
+  const engineRef = useRef<SyncEngine | null>(null);
 
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* quota */ } }, [data]);
   useEffect(() => { try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch { /* quota */ } }, [settings]);
@@ -157,14 +212,15 @@ export function useHub() {
     patchUi({ busy: false });
     setData(d => {
       const messages = { ...d.messages, [key]: (d.messages[key] || []).map(m => (m.id === id ? { ...m, text: res.text, pending: false, error: res.error } as Message : m)) };
-      const usage = { ...d.usage, [agent]: { calls: d.usage[agent].calls + 1, tokens: d.usage[agent].tokens + res.tokens } };
+      const mine = { ...ZERO, ...(d.usageBy[deviceId] || {}) };
+      const usageBy = { ...d.usageBy, [deviceId]: { ...mine, [agent]: { calls: mine[agent].calls + 1, tokens: mine[agent].tokens + res.tokens } } };
       const projects = !proj ? d.projects : d.projects.map(p => {
         if (p.id !== proj.id) return p;
         const q = { ...p };
         if (res.tasks?.length) { q.tasks = [...q.tasks, ...res.tasks.map(t => T(t.agent || agent, t.title, 'todo', 0))]; q.activity = [...res.tasks.map(t => A(t.agent || agent, 'Task added: ' + t.title)), ...q.activity]; }
         if (res.art?.length) { q.art = [...res.art.map(a => ({ id: uid(), title: a.title, prompt: a.prompt, imagePath: a.imagePath, ts: now() })), ...q.art]; q.activity = [...res.art.map(a => A('grok', 'Generated concept: ' + a.title)), ...q.activity]; }
         if (res.builds?.length) {
-          q.builds = [...res.builds.map(b => ({ id: uid(), name: b.name, path: b.path, kind: b.kind || kindOfFile(b.path), platform: b.platform || platformOfFile(b.path), by: 'codex' as AgentId, ts: now() })), ...q.builds];
+          q.builds = [...res.builds.map(b => ({ id: uid(), name: b.name, path: b.path, kind: b.kind || kindOfFile(b.path), platform: b.platform || platformOfFile(b.path), by: 'codex' as AgentId, ts: now(), device: isUrl(b.path) ? undefined : deviceId })), ...q.builds];
           q.activity = [...res.builds.map(b => A('codex', 'Registered test build ' + b.name)), ...q.activity];
         }
         if (res.code?.length) { q.code = [...res.code.map(k => ({ id: uid(), agent, title: k.title, file: k.file || '', lang: k.lang || '', code: k.code, ts: now() })), ...q.code]; q.activity = [...res.code.map(k => A(agent, 'Code logged: ' + k.title)), ...q.activity]; }
@@ -172,7 +228,7 @@ export function useHub() {
         q.activity = [A(agent, 'Replied to: ' + text.slice(0, 60) + (text.length > 60 ? '…' : '')), ...q.activity];
         return q;
       });
-      return { ...d, messages, usage, projects };
+      return { ...d, messages, usageBy, projects };
     });
     if (res.handoff) push(key, { id: uid(), type: 'handoff', from: agent, to: res.handoff.to, reason: res.handoff.reason, status: 'pending', userText: text });
   }, [push, patchUi]);
@@ -258,7 +314,7 @@ export function useHub() {
       const ex = d.projects.find(p => p.id === pid);
       if (ex) {
         return { ...d, projects: d.projects.map(p => p.id !== ex.id ? p : {
-          ...p, folder: { name: scan.name, path }, engines: p.engines.length ? p.engines : det.engines, platforms: uniq([...p.platforms, ...det.platforms]),
+          ...p, folder: { name: scan.name, path, device: deviceId }, engines: p.engines.length ? p.engines : det.engines, platforms: uniq([...p.platforms, ...det.platforms]),
           stack: { ...p.stack, libraries: uniq([...p.stack.libraries, ...det.libs]), languages: uniq([...p.stack.languages, ...det.langs]) },
           builds: [...det.builds.filter(b => !p.builds.some(x => x.path === b.path || x.name === b.name)), ...p.builds],
           activity: [A('claude', `Linked local folder ${scan.name} (${det.builds.length} shortcuts found)`), ...p.activity],
@@ -266,7 +322,7 @@ export function useHub() {
       }
       const p: Project = {
         id: pid, name: scan.name, tagline: 'Loaded from local folder. Ask Grok to write the pitch.', tags: det.engines.some(e => WEB_ENGINES.includes(e)) ? ['Web'] : [], engines: det.engines, platforms: det.platforms,
-        stack: { languages: det.langs, libraries: det.libs, tools: [] }, code: [], folder: { name: scan.name, path },
+        stack: { languages: det.langs, libraries: det.libs, tools: [] }, code: [], folder: { name: scan.name, path, device: deviceId },
         tasks: [T('claude', 'Audit existing code & summarize state', 'todo', 0), T('grok', 'Write pitch from existing project', 'todo', 0)], art: [], gdd: [{ id: uid(), title: 'Pitch', agent: 'grok', body: '' }],
         builds: det.builds, activity: [A('claude', `Imported folder ${scan.name} (${det.builds.length} shortcuts, ${det.names.length} entries)`)],
       };
@@ -285,14 +341,15 @@ export function useHub() {
       const deskScan = desk ? await scanFolder(desk).catch(() => null) : null;
       for (const p of dataRef.current.projects) {
         const found: Build[] = [];
-        if (p.folder?.path) {
-          const s = await scanFolder(p.folder.path).catch(() => null);
+        const lf = localFolder(p);
+        if (lf?.path) {
+          const s = await scanFolder(lf.path).catch(() => null);
           if (s) found.push(...(await detectFromScan(s)).builds);
         }
         if (deskScan && desk) {
           for (const e of deskScan.entries) {
             if (BUILD_RE.test(e.name) && slug(e.name).startsWith(slug(p.name)) && slug(p.name).length >= 3)
-              found.push({ id: uid(), name: e.name, path: await joinPath(desk, e.name), kind: kindOfFile(e.name), platform: platformOfFile(e.name), by: 'codex', ts: now() });
+              found.push({ id: uid(), name: e.name, path: await joinPath(desk, e.name), kind: kindOfFile(e.name), platform: platformOfFile(e.name), by: 'codex', ts: now(), device: deviceId });
           }
         }
         const fresh = found.filter(b => !p.builds.some(x => x.path === b.path) && !(p.dismissed || []).includes(b.path));
@@ -308,31 +365,51 @@ export function useHub() {
   }, [updProj, toast]);
 
   // ── Builds ────────────────────────────────────────────────────────────────────
+  const deviceName = useCallback((id?: string) => (id && dataRef.current.devices?.[id]?.name) || 'another device', []);
+
+  /**
+   * Windows builds only launch on Windows, Mac builds on a Mac, Android builds on Android.
+   * Local files also have to be on this device; web URLs open anywhere.
+   */
+  const launchable = useCallback((b: Build): { ok: boolean; why?: string } => {
+    const onThisDevice = !b.device || b.device === deviceId;
+    if (b.platform === 'web') return isUrl(b.path) || onThisDevice ? { ok: true } : { ok: false, why: `This web build is on ${deviceName(b.device)}` };
+    if (b.platform === 'android') {
+      if (deviceOs !== 'android') return { ok: false, why: 'Android build — play it from the Mosslight app on your phone' };
+      if (b.remote || isUrl(b.path)) return { ok: true };
+      return { ok: false, why: b.device ? `Waiting for ${deviceName(b.device)} to upload this APK — open Mosslight there with sync on` : 'This APK isn\'t synced yet' };
+    }
+    if (b.platform !== deviceOs) return { ok: false, why: `${OS_LABEL[b.platform]} build — open Mosslight on ${b.platform === 'mac' ? 'a Mac' : 'a Windows PC'} to play it` };
+    if (!onThisDevice) return { ok: false, why: `This build is on ${deviceName(b.device)}` };
+    return { ok: true };
+  }, [deviceName]);
+
   const launch = useCallback(async (p: Project, b: Build) => {
+    const l = launchable(b);
+    if (!l.ok) return toast(l.why!);
     try {
-      if (b.platform === 'android' && !/^https?:/i.test(b.path)) {
-        if (platform !== 'desktop') return toast('This APK lives on your computer — launch it from the desktop app');
-        toast('Installing ' + b.name + ' on your Android device…');
-        toast(await adbInstall(b.path));
-      } else if (/^https?:/i.test(b.path)) {
+      if (b.platform === 'android' && b.remote) {
+        const store = engineRef.current?.store;
+        if (!store) return toast('Turn on sync in Settings to install builds from your computer');
+        toast(await installOrLaunch(store, b, toast));
+      } else if (isUrl(b.path)) {
         await openExternal(b.path);
         toast('Opened ' + b.name);
       } else {
-        if (platform !== 'desktop') return toast('This build lives on your computer — launch it from the desktop app');
         await launchPath(b.path);
         toast('Launched ' + b.name);
       }
-      logActivity(p.id, 'codex', 'Launched test build ' + b.name);
+      logActivity(p.id, 'codex', `Launched test build ${b.name} on ${dataRef.current.devices?.[deviceId]?.name || OS_LABEL[deviceOs]}`);
     } catch (e) {
       toast('Couldn\'t launch ' + b.name + ': ' + ((e as Error)?.message || String(e)));
     }
-  }, [logActivity, toast]);
+  }, [launchable, logActivity, toast, deviceName]);
 
   const addBuild = useCallback((pid: string, v: string) => {
     const path = v.trim().replace(/^"|"$/g, '');
     if (!path) return;
     const name = baseName(path);
-    updProj(pid, p => ({ ...p, builds: [{ id: uid(), name, path, kind: /^https?:/i.test(path) ? 'web' : kindOfFile(path), platform: /^https?:/i.test(path) ? 'web' : platformOfFile(path), by: 'codex', ts: now() }, ...p.builds], activity: [A('codex', 'Registered shortcut ' + name), ...p.activity] }));
+    updProj(pid, p => ({ ...p, builds: [{ id: uid(), name, path, kind: /^https?:/i.test(path) ? 'web' : kindOfFile(path), platform: /^https?:/i.test(path) ? 'web' : platformOfFile(path), by: 'codex', ts: now(), device: isUrl(path) ? undefined : deviceId }, ...p.builds], activity: [A('codex', 'Registered shortcut ' + name), ...p.activity] }));
   }, [updProj]);
 
   const removeBuild = useCallback((pid: string, b: Build) => updProj(pid, p => ({ ...p, builds: p.builds.filter(x => x.id !== b.id), dismissed: uniq([...(p.dismissed || []), b.path]) })), [updProj]);
@@ -340,6 +417,11 @@ export function useHub() {
   // ── Images (covers, art, previews) ────────────────────────────────────────────
   const storeImage = useCallback(async (file: File, name: string): Promise<string> => {
     const { dataUrl, bytes } = await resizeImage(file, 1400);
+    // With sync on, images go to the shared repo so every device can show them.
+    if (engineRef.current) {
+      const ref = await uploadImage(bytes).catch(() => null);
+      if (ref) return ref;
+    }
     if (platform === 'web') return dataUrl;
     const fname = `${name}_${Date.now().toString(36)}.jpg`;
     return saveBytes(bytes, isDesktop ? await joinPath(await imageDir(), fname) : '', `images/${fname}`);
@@ -371,7 +453,7 @@ export function useHub() {
       let preview: string | undefined;
       if ((kind === 'image' || kind === 'texture') && /\.(png|jpe?g|webp)$/i.test(f.name)) preview = (await resizeImage(f, 480).catch(() => null))?.dataUrl;
       const pid = uiRef.current.view === 'project' ? uiRef.current.pid : null;
-      added.push({ id: uid(), name: f.name, kind, size: fmtSize(f.size), tags: [], ts: now(), usedBy: pid ? [pid] : [], path, preview, hash });
+      added.push({ id: uid(), name: f.name, kind, size: fmtSize(f.size), tags: [], ts: now(), usedBy: pid ? [pid] : [], path, preview, hash, device: path ? deviceId : undefined });
     }
     setData(d => ({ ...d, assets: [...added, ...d.assets] }));
     toast(`Added ${added.length} file${added.length === 1 ? '' : 's'} to the asset library` + (dupes ? ` · ${dupes} already there` : ''));
@@ -381,8 +463,9 @@ export function useHub() {
     const linked = a.usedBy.includes(p.id);
     let links = { ...(a.links || {}) };
     try {
-      if (!linked && isDesktop && a.path && p.folder?.path) {
-        links[p.id] = await copyFile(a.path, await joinPath(p.folder.path, ...assetFolderFor(p), a.name));
+      const lf = localFolder(p);
+      if (!linked && isDesktop && a.path && lf?.path && (!a.device || a.device === deviceId)) {
+        links[p.id] = await copyFile(a.path, await joinPath(lf.path, ...assetFolderFor(p), a.name));
       } else if (linked && links[p.id]) {
         await removeFile(links[p.id]);
         const { [p.id]: _gone, ...rest } = links;
@@ -406,6 +489,83 @@ export function useHub() {
     setData(d => ({ ...d, assets: d.assets.map(x => (x.id === id ? { ...x, preview: r.dataUrl } : x)) }));
   }, []);
 
+  // ── Sync across devices ───────────────────────────────────────────────────────
+  const [syncState, setSyncState] = useState<SyncState>({ status: 'off' });
+  const [syncConfig, setSyncConfig] = useState<SyncConfig | null>(null);
+
+  /** Remote changes are merged into whatever is current, so edits made meanwhile survive. */
+  const applyRemote = useCallback((d: HubData) => {
+    const next = merge(dataRef.current, toDoc(d));
+    dataRef.current = next;
+    setRaw(cur => merge(cur, toDoc(d)));
+  }, []);
+
+  const startSync = useCallback(async (cfg: SyncConfig) => {
+    engineRef.current?.stop();
+    const engine = new SyncEngine(cfg, () => dataRef.current, applyRemote, setSyncState);
+    engineRef.current = engine;
+    const ok = await engine.start();
+    if (!ok) { engine.stop(); engineRef.current = null; setImageStore(null); return false; }
+    setImageStore(engine.store);
+    setSyncConfig(cfg);
+    return true;
+  }, [applyRemote]);
+
+  const connectSync = useCallback(async (cfg: SyncConfig) => {
+    const ok = await startSync(cfg);
+    if (ok) { await saveSyncConfig(cfg); toast('Sync is on — this device now shares the library'); }
+    return ok;
+  }, [startSync, toast]);
+
+  const disconnectSync = useCallback(async () => {
+    engineRef.current?.stop();
+    engineRef.current = null;
+    setImageStore(null);
+    setSyncConfig(null);
+    setSyncState({ status: 'off' });
+    await saveSyncConfig(null);
+    toast('Sync turned off on this device');
+  }, [toast]);
+
+  useEffect(() => {
+    void loadSyncConfig().then(c => { if (c) void startSync(c); });
+    return () => engineRef.current?.stop();
+  }, [startSync]);
+
+  useEffect(() => { engineRef.current?.schedulePush(); }, [data]);
+
+  /** Desktop: upload Android builds found on this computer so the phone can install them. */
+  const apkTried = useRef(new Set<string>());
+  useEffect(() => {
+    const store = engineRef.current?.store;
+    if (!isDesktop || !store || syncState.status !== 'ok') return;
+    for (const p of data.projects) {
+      for (const b of p.builds) {
+        if (b.platform !== 'android' || b.remote || isUrl(b.path) || b.device !== deviceId || apkTried.current.has(b.id)) continue;
+        apkTried.current.add(b.id);
+        void uploadApk(store, b)
+          .then(remote => { updProj(p.id, q => ({ ...q, builds: q.builds.map(x => (x.id === b.id ? { ...x, remote } : x)) })); toast(`${b.name} is ready to install on your phone`); })
+          .catch(e => toast(`Couldn't send ${b.name} to your phone: ${(e as Error)?.message || e}`));
+      }
+    }
+  }, [data.projects, syncState.status, updProj, toast]);
+
+  /** Once sync is on, move images that only exist on this device into the shared repo. */
+  const imgTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (syncState.status !== 'ok' || platform === 'android') return;
+    const local = (s?: string) => !!s && !s.startsWith('img:') && !isUrl(s) && !imgTried.current.has(s);
+    const lift = async (src: string) => {
+      imgTried.current.add(src);
+      const bytes = src.startsWith('data:') ? Uint8Array.from(atob(src.split(',')[1]), c => c.charCodeAt(0)) : await readFileBytes(src, 25 * 1024 * 1024);
+      return uploadImage(bytes, /\.png$/i.test(src) || src.startsWith('data:image/png') ? 'png' : 'jpg');
+    };
+    for (const p of data.projects) {
+      if (local(p.coverImage)) void lift(p.coverImage!).then(ref => ref && updProj(p.id, q => ({ ...q, coverImage: ref }))).catch(() => {});
+      for (const a of p.art) if (local(a.imagePath)) void lift(a.imagePath!).then(ref => ref && updProj(p.id, q => ({ ...q, art: q.art.map(x => (x.id === a.id ? { ...x, imagePath: ref } : x)) }))).catch(() => {});
+    }
+  }, [data.projects, syncState.status, updProj]);
+
   const proj = useMemo(() => (ui.view === 'project' ? data.projects.find(p => p.id === ui.pid) || null : null), [data.projects, ui.view, ui.pid]);
 
   return {
@@ -413,8 +573,9 @@ export function useHub() {
     patchUi, toast, updProj, updSettings, setData,
     send, ask, dispatch, reroute, approve, decline, choose, toggleOverride, draftSection,
     cycleTask, createProject, removeProject, openFolder,
-    launch, addBuild, removeBuild, setCoverImage, setArtImage,
+    launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
+    syncState, syncConfig, connectSync, disconnectSync,
   };
 }
 

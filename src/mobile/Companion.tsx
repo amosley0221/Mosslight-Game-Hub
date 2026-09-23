@@ -5,7 +5,7 @@ import type { Hub } from '../core/store';
 import { ago } from '../core/util';
 import { Glyph, ImageSlot, Toast, asset, coverOf } from '../ui/common';
 import { Composer, MessageView } from '../ui/Chat';
-import { tileInfo } from '../ui/Library';
+import { launchProps, tileInfo } from '../ui/Library';
 
 const section = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '.08em', marginBottom: 8 };
 
@@ -58,7 +58,7 @@ export function Companion({ hub, onSettings, banner }: { hub: Hub; onSettings: (
                   {p.builds.length > 0 && (
                     <div className="row wrap" style={{ gap: 6, padding: '0 12px 12px' }}>
                       {p.builds.slice(0, 2).map(b => (
-                        <button key={b.id} className="build-btn" style={{ padding: '7px 10px', minHeight: 32 }} onClick={() => void hub.launch(p, b)}>
+                        <button key={b.id} className="build-btn" style={{ padding: '7px 10px', minHeight: 32 }} {...launchProps(hub, p, b)}>
                           <span style={{ fontSize: 9, color: 'var(--ag-codex)' }}>▶</span><span className="ellipsis">{b.name}</span><span className="mono" style={{ fontSize: 9, color: 'var(--muted)' }}>{PLAT_LABEL[b.platform]}</span>
                         </button>
                       ))}
@@ -89,7 +89,7 @@ export function Companion({ hub, onSettings, banner }: { hub: Hub; onSettings: (
               <div style={section}>Launch on this device</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {proj.builds.map(b => (
-                  <button key={b.id} onClick={() => void hub.launch(proj, b)} className="card" style={{ display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) auto', gap: 12, alignItems: 'center', textAlign: 'left', padding: 10, minHeight: 60 }}>
+                  <button key={b.id} {...launchProps(hub, proj, b)} className="card" style={{ display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) auto', gap: 12, alignItems: 'center', textAlign: 'left', padding: 10, minHeight: 60 }}>
                     <span style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--ag-codex)', display: 'grid', placeItems: 'center', color: 'var(--on-agent)', fontSize: 13, fontWeight: 700 }}>▶</span>
                     <span style={{ minWidth: 0 }}><span className="ellipsis" style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ display: 'block', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{AGENTS[b.by].name} · {ago(b.ts)}</span></span>
                     <span className="mono" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 5, border: '1px solid var(--line-3)', color: 'var(--text-2)' }}>{PLAT_LABEL[b.platform]}</span>

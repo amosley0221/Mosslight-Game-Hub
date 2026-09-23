@@ -3,6 +3,8 @@ import { AGENTS, engineName } from './constants';
 import { parseReply } from './router';
 import type { AgentId, AgentResult, Project, Settings } from './types';
 import { getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgentCli, saveBytes } from '../platform';
+import { localFolder } from '../sync/device';
+import { uploadImage } from '../sync/images';
 
 export type Reply = AgentResult & { tokens: number };
 
@@ -23,7 +25,7 @@ function projectContext(proj: Project | null) {
     `Engines: ${proj.engines.map(engineName).join(', ') || 'undecided'}`,
     `Platforms: ${proj.platforms.join(', ')}`,
     `Traits: ${proj.tags.join(', ') || 'none'}`,
-    proj.folder?.path ? `Local folder: ${proj.folder.path}` : 'No local folder linked.',
+    localFolder(proj) ? `Local folder: ${localFolder(proj)!.path}` : 'No local folder on this device.',
     'Open tasks:',
     ...proj.tasks.filter(t => t.status !== 'done').map(t => `- [${AGENTS[t.agent].name}] ${t.title} (${t.status})`),
   ].join('\n');
@@ -117,8 +119,11 @@ async function renderArt(key: string, model: string, proj: Project, art: NonNull
       if (!b64) continue;
       const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
       const file = `${a.title.replace(/[^\w-]+/g, '_').slice(0, 40)}_${Date.now().toString(36)}.png`;
-      const dir = isDesktop ? (proj.folder?.path ? await joinPath(proj.folder.path, 'concept') : await joinPath(await imageDir(), proj.id)) : '';
-      a.imagePath = await saveBytes(bytes, isDesktop ? await joinPath(dir, file) : '', `art/${proj.id}/${file}`);
+      const lf = localFolder(proj);
+      const dir = isDesktop ? (lf?.path ? await joinPath(lf.path, 'concept') : await joinPath(await imageDir(), proj.id)) : '';
+      const local = await saveBytes(bytes, isDesktop ? await joinPath(dir, file) : '', `art/${proj.id}/${file}`);
+      // With sync on, share it so every device shows the same gallery (the file stays in concept/ too).
+      a.imagePath = (await uploadImage(bytes, 'png').catch(() => null)) || local;
     } catch {
       /* keep the text entry even if generation fails */
     }
@@ -173,7 +178,7 @@ async function simulate(agent: AgentId, text: string, proj: Project | null): Pro
 export async function respond(agent: AgentId, text: string, proj: Project | null, settings: Settings): Promise<Reply> {
   const system = systemPrompt(agent, proj);
   const short = shortOf(text);
-  const cwd = proj?.folder?.path;
+  const cwd = proj ? localFolder(proj)?.path : undefined;
   const useLocal = isDesktop && !settings.remote[agent] && agent !== 'grok';
   const key = await getSecret(AGENT_KEY[agent].key);
   let live: { text: string; tokens: number } | null = null;

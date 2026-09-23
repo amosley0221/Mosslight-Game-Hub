@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { App as CapApp } from '@capacitor/app';
+import { parsePairingLink } from './sync/engine';
 import { useHub } from './core/store';
 import { platform } from './platform';
 import { Companion } from './mobile/Companion';
@@ -22,6 +24,16 @@ export default function App() {
     document.documentElement.dataset.theme = settings.theme;
     document.body.style.background = settings.theme === 'dark' ? '#0d0f0d' : '#f3eee2';
   }, [settings.theme]);
+
+  // Phone pairing: scanning the desktop's QR code opens mosslight://pair#… in this app.
+  const { connectSync } = hub;
+  useEffect(() => {
+    if (platform !== 'android') return;
+    const pair = (url?: string) => { const c = url ? parsePairingLink(url) : null; if (c) void connectSync(c); };
+    void CapApp.getLaunchUrl().then(r => pair(r?.url)).catch(() => {});
+    const h = CapApp.addListener('appUrlOpen', e => pair(e.url));
+    return () => { void h.then(x => x.remove()); };
+  }, [connectSync]);
 
   // ⌘K / Ctrl+K focuses chat, ⌘, / Ctrl+, opens Settings.
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { AGENTS } from '../core/constants';
 import type { AgentId, Project } from '../core/types';
-import { fileSrc } from '../platform';
+import { useImageSrc } from '../sync/images';
 import { checkForUpdate, type UpdateInfo } from '../platform/updates';
 
 export const asset = (name: string) => `./assets/${name}`;
@@ -31,7 +31,7 @@ export function Typing({ color }: { color: string }) {
 export function ImageSlot({ src, placeholder, onFile, compact }: { src?: string; placeholder: string; onFile?: (f: File) => void; compact?: boolean }) {
   const [drag, setDrag] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const url = fileSrc(src);
+  const url = useImageSrc(src);
   const pick = (f?: File | null) => { if (f && onFile && f.type.startsWith('image/')) onFile(f); };
   return (
     <div
