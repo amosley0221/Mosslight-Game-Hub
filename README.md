@@ -15,7 +15,11 @@ It ships as a **Windows app**, a **macOS app** and an **Android companion app**.
 | macOS (Apple Silicon + Intel) | `Mosslight_x.y.z_universal.dmg` | Automatic in-app update, installs over the existing app |
 | Android | `Mosslight_x.y.z_android.apk` | The app offers each new APK, which installs over the existing app |
 
+All devices share one library through a private GitHub repo (Settings → Sync across devices). Each build only launches on its own platform: Windows builds on Windows, Mac builds on a Mac, Android builds on Android.
+
 ## First run
+
+**Full setup guide (sync + agents): [docs/SETUP.md](docs/SETUP.md).**
 
 1. Open **Settings (⚙)** and add API keys for the agents you want live. Any agent without a key replies in simulated mode.
    - **Claude**: an Anthropic key, or switch Claude to **Local** to use your installed Claude Code CLI (`claude`) inside the project folder.
@@ -91,7 +95,6 @@ The design handoff is in [`docs/design-handoff`](docs/design-handoff).
 
 ## Not yet built
 
-- Live sync between desktop and phone (device pairing). The companion currently keeps its own library.
 - Push notifications for new Android builds.
 - Engine batch jobs (RunUAT, Unity `-batchmode`, Godot export) run from buttons. Today, Codex in Local mode runs them.
 - 3D previews for GLB/FBX files in the asset library.
