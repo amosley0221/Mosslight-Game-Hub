@@ -642,7 +642,13 @@ export function useHub() {
     if (!p?.repo || !lf?.path || !isDesktop || backingUp.current.has(pid)) return;
     backingUp.current.add(pid);
     try {
-      const res = await backup(lf.path, reason || `Mosslight backup from ${myDeviceName()}`);
+      // `silent` means this is the automatic backup after a run — that one leaves the default
+      // branch alone. A backup you asked for by name still does what you asked.
+      const res = await backup(lf.path, reason ? `Mosslight backup — ${reason}` : `Mosslight backup from ${myDeviceName()}`, silent ? p.repo.branch || 'main' : undefined);
+      if (res.skipped) {
+        if (!silent) toast(`Not backed up: ${p.name} is on ${res.skipped}, and auto backup leaves that branch alone`);
+        return;
+      }
       if (res.committed || res.pushed) {
         updProj(pid, q => ({ ...q, repo: q.repo && { ...q.repo, lastBackup: now(), lastBackupDevice: deviceId, lastCommit: res.commit, lastError: undefined }, activity: [A('codex', `Backed up to GitHub (${q.repo?.owner}/${q.repo?.name}${res.commit ? ' @ ' + res.commit : ''})`), ...q.activity] }));
         toast(`Backed up ${p.name} to GitHub`);
@@ -669,7 +675,7 @@ export function useHub() {
   /** Link a GitHub repo you already have. With a local folder here, the folder is connected and pushed. */
   const linkRepo = useCallback((pid: string, owner: string, name: string) => withRepoBusy(pid, `Linking ${owner}/${name}…`, async () => {
     const r = await getRepo(owner, name);
-    const link = { owner: r.owner.login, name: r.name, branch: r.default_branch, private: r.private, auto: true };
+    const link = { owner: r.owner.login, name: r.name, branch: r.default_branch, private: r.private, auto: false };
     updProj(pid, q => ({ ...q, repo: link, activity: [A('codex', `Linked GitHub repo ${r.full_name}`), ...q.activity] }));
     const p = dataRef.current.projects.find(x => x.id === pid);
     const lf = p && localFolder(p);
@@ -692,7 +698,7 @@ export function useHub() {
       try { r = await createRepo(name, p.tagline, !(lf?.path && isDesktop)); } catch (e) { if (!/already exists/i.test(String(e))) throw e; }
     }
     if (!r) throw new Error('Couldn\'t find a free repo name — create it on GitHub and link it instead');
-    const link = { owner: r.owner.login, name: r.name, branch: r.default_branch || 'main', private: true, auto: true };
+    const link = { owner: r.owner.login, name: r.name, branch: r.default_branch || 'main', private: true, auto: false };
     updProj(pid, q => ({ ...q, repo: link, activity: [A('codex', `Created private GitHub repo ${r!.full_name}`), ...q.activity] }));
     if (lf?.path && isDesktop) {
       const res = await connectFolder(lf.path, link.owner, link.name, p.engines, false);
@@ -874,7 +880,7 @@ export function useHub() {
     const match = (p: Project) => p.id === prefer || sameRepo(p) || p.folder?.path === path || p.folder?.name === scan.name || p.name.toLowerCase() === scan.name.toLowerCase();
     const existing = dataRef.current.projects.find(match);
     const pid = existing ? existing.id : uid();
-    const repo = remote ? { owner: remote.owner, name: remote.name, branch: remote.branch, auto: true } : undefined;
+    const repo = remote ? { owner: remote.owner, name: remote.name, branch: remote.branch, auto: false } : undefined;
     setData(d => {
       const ex = d.projects.find(p => p.id === pid);
       if (ex) {
@@ -916,7 +922,7 @@ export function useHub() {
       if (linked) { patchUi({ view: 'project', pid: linked.id, tab: 'overview' }); return; }
       const p: Project = {
         id: uid(), name: r.name, tagline: r.description || 'Linked from GitHub.', tags: [], engines: [], platforms: ['windows'], stack: { languages: [], libraries: [], tools: [] }, code: [], folder: null,
-        repo: { owner: r.owner.login, name: r.name, branch: r.default_branch, private: r.private, auto: true },
+        repo: { owner: r.owner.login, name: r.name, branch: r.default_branch, private: r.private, auto: false },
         tasks: [T('claude', 'Audit the repo & summarize state', 'todo', 0)], art: [], gdd: [{ id: uid(), title: 'Pitch', agent: 'grok', body: '' }], builds: [], activity: [A('claude', `Linked GitHub repo ${r.full_name}`)],
       };
       setData(d => ({ ...d, projects: [p, ...d.projects] }));

@@ -3,6 +3,14 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.18.0] - 2026-09-23
+
+### Fixed
+- **Auto backup was committing agents' work to your default branch, and the agents got the blame.** Linking a repo turned auto backup on, and after every local run the hub ran `git add -A`, committed and pushed to whatever branch was checked out — usually `main`. So a run that carefully changed nothing still produced a commit, and the agent reading git afterwards saw work it hadn't done attributed to the project.
+  - **Auto backup is now off by default** when you link or create a repo. Existing projects keep the setting they have — check it in Overview → GitHub.
+  - **Automatic backups never touch the repo's default branch.** On `main` they're skipped; on a feature branch they work as before. A backup you press the button for still does exactly what you asked.
+  - **Commits say who made them**, titled `Mosslight backup — …`, and when auto backup is on the agents are told so in their context, so a hub commit is never mistaken for theirs.
+
 ## [0.17.2] - 2026-09-23
 
 ### Fixed

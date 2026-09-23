@@ -104,6 +104,9 @@ function projectContext(proj: Project | null) {
     ...(proj.brand
       ? [`Mosslight loading screen kit: ${proj.brand.path} — loading.html (the screen), SplashScreen.jsx (React), brand.css (tokens), assets/ (logo PNGs), README.md (how to wire it into each engine). Use these files and colours for anything brand-facing rather than inventing a new look.`]
       : []),
+    ...(proj.repo?.auto
+      ? [`Note: Mosslight's auto backup is ON for this project — after a local run it commits everything and pushes to ${proj.repo.owner}/${proj.repo.name}, on a branch other than ${proj.repo.branch || 'main'}. Commits titled "Mosslight backup — …" are the hub's, not yours or a teammate's.`]
+      : []),
     ...(proj.music?.length
       ? ['Music the user has written for this game (use these exact files when asked to put music in the game):', ...proj.music.slice(0, 40).map(m => `- "${m.name}" → ${m.path}`)]
       : []),

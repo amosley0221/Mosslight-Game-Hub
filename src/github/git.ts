@@ -60,8 +60,14 @@ function gitignoreFor(engines: string[]) {
  * Commit everything and push. Pulls (rebase) first if GitHub has newer commits.
  * Returns what happened; throws with git's message on failure.
  */
-export async function backup(dir: string, message: string): Promise<{ committed: boolean; pushed: boolean; commit?: string }> {
+export async function backup(dir: string, message: string, protectBranch?: string): Promise<{ committed: boolean; pushed: boolean; commit?: string; skipped?: string }> {
   await ensureIdentity(dir);
+  // Committing straight to main behind the user's back is how an agent's work gets
+  // misattributed — and most projects have a rule against it.
+  if (protectBranch) {
+    const here = (await git(['rev-parse', '--abbrev-ref', 'HEAD'], dir, true)).stdout.trim();
+    if (here === protectBranch) return { committed: false, pushed: false, skipped: here };
+  }
   const status = must(await git(['status', '--porcelain'], dir), 'Checking changes');
   let committed = false;
   if (status) {

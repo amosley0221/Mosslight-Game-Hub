@@ -141,7 +141,13 @@ export function RepoCard({ hub, p, compact }: { hub: Hub; p: Project; compact?: 
         lf ? (
           <div className="row wrap" style={{ gap: 8 }}>
             <button className="btn-accent" style={btn} disabled={busy} onClick={() => void hub.backupNow(p.id)}>Back up now</button>
-            <span className="row" style={{ gap: 8, fontSize: 12, color: 'var(--muted)' }}><Switch on={!!r.auto} onClick={() => hub.setRepoAuto(p.id, !r.auto)} /> Auto backup (after local agent runs + every 30 min)</span>
+            <span className="row" style={{ gap: 8, fontSize: 12, color: 'var(--muted)' }}>
+              <Switch on={!!r.auto} onClick={() => hub.setRepoAuto(p.id, !r.auto)} />
+              <span>
+                Auto backup (after local agent runs + every 30 min)
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--dim)' }}>Commits every change and pushes. It leaves {r.branch || 'main'} alone — switch to a branch first, or back up by hand.</span>
+              </span>
+            </span>
           </div>
         ) : (
           <div className="row wrap" style={{ gap: 8 }}>
