@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- Mosslight loading screen for __TITLE__.
+     Shown while the game boots. Set progress from your loader with:
+       window.mosslightLoading.progress(0..100)   and   window.mosslightLoading.done()
+     Standalone: open it in a browser to see it, or point an <iframe>/WebView at it. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="brand.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-ui); display: grid; place-items: center; overflow: hidden; }
+  .wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; padding: 24px; animation: ml-rise var(--dur-splash-in) ease; }
+  .logo { height: min(30vh, 260px); animation: ml-glow 2.4s ease-in-out infinite; }
+  .presents { font-size: 12px; font-weight: 600; letter-spacing: var(--tracking-brand); text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font-family: var(--font-display); font-size: clamp(40px, 6vw, 76px); font-weight: 600; line-height: 1; letter-spacing: -.01em; }
+  .sub { font-family: var(--font-display); font-style: italic; font-size: clamp(16px, 2vw, 24px); color: var(--text-2); margin-top: -6px; }
+  .bar { width: min(60vw, 420px); height: 3px; border-radius: 2px; background: var(--line-2); overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s var(--ease); }
+  .tip { font-size: 13px; color: var(--muted); max-width: 520px; line-height: 1.5; transition: opacity .3s; }
+  .pct { font-family: var(--font-mono); font-size: 11px; color: var(--dim); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <img class="logo" src="assets/mosslight-logo.png" alt="Mosslight">
+    <div class="presents">Mosslight Studios presents</div>
+    <h1>__TITLE__</h1>
+    <div class="sub">__SUBTITLE__</div>
+    <div class="bar"><i id="ml-bar"></i></div>
+    <div class="tip" id="ml-tip"></div>
+    <div class="pct" id="ml-pct">0%</div>
+  </div>
+<script>
+// One sentence per tip. Add your own — they rotate every 4 seconds.
+const TIPS = __TIPS__;
+const bar = document.getElementById('ml-bar'), pct = document.getElementById('ml-pct'), tip = document.getElementById('ml-tip');
+let shown = 0;
+const setTip = i => { tip.style.opacity = 0; setTimeout(() => { tip.textContent = TIPS[i] || ''; tip.style.opacity = 1; }, 300); };
+tip.textContent = TIPS[0] || '';
+if (TIPS.length > 1) setInterval(() => { shown = (shown + 1) % TIPS.length; setTip(shown); }, 4000);
+
+// The game drives these two. Until it does, the bar creeps so the screen never looks frozen.
+let real = false;
+window.mosslightLoading = {
+  progress(p) { real = true; p = Math.max(0, Math.min(100, p)); bar.style.width = p + '%'; pct.textContent = Math.round(p) + '%'; },
+  done() { this.progress(100); document.body.style.transition = 'opacity var(--dur-splash-out) ease'; document.body.style.opacity = 0; },
+};
+let fake = 0;
+(function creep() { if (real) return; fake = Math.min(90, fake + Math.random() * 6); bar.style.width = fake + '%'; pct.textContent = Math.round(fake) + '%'; setTimeout(creep, 300 + Math.random() * 400); })();
+</script>
+</body>
+</html>

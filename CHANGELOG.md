@@ -3,6 +3,17 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.10.0] - 2026-09-23
+
+### Added
+- **Brand kit: the Mosslight loading screen, in your games.** The studio screen — lantern monogram with a slow glow, "Mosslight Studios presents" in tracked brass, the game title in a display serif, a thin progress bar and your own tips — now ships inside Mosslight and can be written into any game's folder.
+  - **New project** has an **Add the Mosslight loading screen** tick. The kit lands in `Mosslight/Brand` in the game folder from the start, with a task for Codex to wire it in.
+  - **Any existing project** gets the same from a **Loading screen** card on Overview: **Add loading screen**, **Show in folder**, and **Ask Codex to wire it in**.
+  - What's written: `loading.html` (runs as-is — your loader drives it with `window.mosslightLoading.progress()` / `.done()`, and the bar creeps until then so it never looks frozen), `SplashScreen.jsx` (the same screen as a React component), `brand.css` (the tokens, dark and bone), the four brand PNGs, and a `README.md` with per-engine instructions. The game's name and pitch are filled in already.
+  - **Unity, Unreal and Godot get the same screen, rebuilt.** The templates are web, so for a native engine the agents are given the files as reference plus an exact spec — colours, fonts, sizes and timings — and build it in-engine against real load progress.
+  - **The agents know the kit is there.** Its path and purpose are in their context, so "use the studio colours" or "add a tip about the tide" lands on these files instead of a new invented look.
+- **The startup splash now shows on Android too**, not just desktop.
+
 ## [0.9.0] - 2026-09-23
 
 ### Changed

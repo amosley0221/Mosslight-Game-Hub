@@ -52,6 +52,8 @@ export interface Project {
   story?: StorySection[];
   /** Folders (relative to the project folder) the Art tab shows; unset = all of them. */
   artFolders?: string[];
+  /** The Mosslight loading screen, written into the game's folder. */
+  brand?: { path: string; device?: string; ts: number; tips?: string[]; wired?: boolean };
   /** A just-arrived build worth pointing at. */
   spotlight?: { buildId: string; ts: number };
   /** Last-modified time, used to merge edits from other devices. */

@@ -1,0 +1,56 @@
+/* Mosslight brand tokens — forest green + tan/brass, from the lantern monogram and script wordmark.
+   Dark is the default. Add data-theme="light" on any ancestor for the bone theme. */
+:root {
+  --ml-green-900: #0f1a0e;
+  --ml-green-800: #1a2119;
+  --ml-green-700: #23402a;
+  --ml-green-600: #2f5a2b;
+  --ml-green-500: #3f6b3a;
+  --ml-green-300: #8fae6a;
+  --ml-tan-600: #b8924a;
+  --ml-tan-500: #c9a961;
+  --ml-tan-300: #e6dcc6;
+  --ml-bone-100: #f3eee2;
+  --ml-black-800: #0d0f0d;
+  --ml-black-900: #080908;
+  --ml-lantern: #f2c14e;
+
+  --bg: radial-gradient(1100px 600px at 20% -10%, #1a2119 0%, #0d0f0d 45%, #080908 100%);
+  --bg-flat: #0d0f0d;
+  --text: #efe6d3;
+  --text-2: #cdbf9f;
+  --muted: #8f8672;
+  --dim: #5c5749;
+  --line-2: rgba(214,196,160,.13);
+  --accent: #c9a961;
+  --on-accent: #12140f;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --font-mono: "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
+  --tracking-brand: 0.22em;
+
+  --ease: cubic-bezier(.2,.7,.2,1);
+  --dur-splash-in: 800ms;
+  --dur-splash-hold: 1900ms;
+  --dur-splash-out: 600ms;
+}
+
+[data-theme="light"] {
+  --bg: #f3eee2;
+  --bg-flat: #f3eee2;
+  --text: #1f261c;
+  --text-2: #46503f;
+  --muted: #76705f;
+  --dim: #a39c88;
+  --line-2: rgba(47,66,42,.13);
+  --accent: #2f5a2b;
+  --on-accent: #f7f1e1;
+}
+
+@keyframes ml-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ml-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes ml-glow {
+  0%, 100% { filter: drop-shadow(0 0 18px rgba(242,193,78,.25)); }
+  50% { filter: drop-shadow(0 0 34px rgba(242,193,78,.5)); }
+}

@@ -178,6 +178,7 @@ export function NewProject({ hub, onClose }: { hub: Hub; onClose: () => void }) 
   const [nf, setNf] = useState({ name: '', tagline: '', tags: [] as string[], engines: [] as string[] });
   const gh = useGitHubAccount();
   const [github, setGithub] = useState(true);
+  const [brand, setBrand] = useState(true);
   const toggle = (k: 'tags' | 'engines', v: string) => setNf(s => ({ ...s, [k]: s[k].includes(v) ? s[k].filter(x => x !== v) : [...s[k], v] }));
   const rec = recommend(nf.tags);
   return (
@@ -207,9 +208,18 @@ export function NewProject({ hub, onClose }: { hub: Hub; onClose: () => void }) 
           </span>
         </span>
       </label>
+      <label className="row" style={{ gap: 10, fontSize: 13, cursor: isDesktop ? 'pointer' : 'default', color: isDesktop ? 'inherit' : 'var(--muted)' }}>
+        <input type="checkbox" disabled={!isDesktop} checked={isDesktop && brand} onChange={e => setBrand(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} />
+        <span>
+          Add the Mosslight loading screen
+          <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>
+            {isDesktop ? 'Puts the studio screen (monogram, game title, progress bar, tips) in the game folder, with a task for Codex to wire it into the engine.' : 'Needs a folder on a computer — add it later from the project page.'}
+          </span>
+        </span>
+      </label>
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <button className="btn" style={{ background: 'none', color: 'var(--text-2)' }} onClick={onClose}>Cancel</button>
-        <button className="btn-accent" style={{ padding: '9px 14px' }} onClick={() => void hub.createProject({ ...nf, github: gh.state === 'ok' && github }).then(ok => { if (ok) onClose(); })}>Create</button>
+        <button className="btn-accent" style={{ padding: '9px 14px' }} onClick={() => void hub.createProject({ ...nf, github: gh.state === 'ok' && github, brand: isDesktop && brand }).then(ok => { if (ok) onClose(); })}>Create</button>
       </div>
     </Modal>
   );

@@ -65,7 +65,7 @@ export default function App() {
     return (
       <>
         <Companion hub={hub} onSettings={() => setShowSettings(true)} onNew={() => setShowNew(true)} banner={banner} />
-        <div data-theme={settings.theme}>{overlays}</div>
+        <div data-theme={settings.theme}>{overlays}<Splash /></div>
       </>
     );
   }

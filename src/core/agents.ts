@@ -68,6 +68,9 @@ function projectContext(proj: Project | null) {
     localFolder(proj) ? `Local folder: ${localFolder(proj)!.path}` : 'No local folder on this device.',
     ...(proj.summary ? ['Story: ' + proj.summary.slice(0, 1500)] : []),
     ...bibleContext(proj),
+    ...(proj.brand
+      ? [`Mosslight loading screen kit: ${proj.brand.path} — loading.html (the screen), SplashScreen.jsx (React), brand.css (tokens), assets/ (logo PNGs), README.md (how to wire it into each engine). Use these files and colours for anything brand-facing rather than inventing a new look.`]
+      : []),
     ...(proj.music?.length
       ? ['Music the user has written for this game (use these exact files when asked to put music in the game):', ...proj.music.slice(0, 40).map(m => `- "${m.name}" → ${m.path}`)]
       : []),

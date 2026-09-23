@@ -17,6 +17,7 @@ import { setImageStore, uploadFile, uploadImage } from '../sync/images';
 import { installOrLaunch, uploadApk } from '../sync/apk';
 import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
 import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
+import { installKit, kitPrompt } from '../brand/kit';
 
 const KEY = 'gdh:state:v3';
 const SKEY = 'gdh:settings:v1';
@@ -541,7 +542,7 @@ export function useHub() {
   }, [backupNow]);
 
   // ── Projects ──────────────────────────────────────────────────────────────────
-  const createProject = useCallback(async (nf: { name: string; tagline: string; tags: string[]; engines: string[]; github?: boolean }) => {
+  const createProject = useCallback(async (nf: { name: string; tagline: string; tags: string[]; engines: string[]; github?: boolean; brand?: boolean }) => {
     const n = nf.name.trim();
     if (!n) { toast('Give the project a name'); return false; }
     const p: Project = {
@@ -557,11 +558,50 @@ export function useHub() {
       await writeTextIfMissing(await joinPath(dir, 'README.md'), `# ${n}\n\n${p.tagline}\n\nCreated with Mosslight Game Hub.\n`);
       p.folder = { name: repoSlug(n), path: dir, device: deviceId };
     }
+    // The Mosslight loading screen, ready in the game's folder from the first commit.
+    if (nf.brand && p.folder?.path) {
+      try {
+        const kit = await installKit(p.folder.path, p, []);
+        p.brand = { path: kit, device: deviceId, ts: now() };
+        p.tasks = [...p.tasks, T('codex', 'Wire in the Mosslight loading screen', 'todo', 0)];
+      } catch { /* the folder isn't writable — the kit can be added later from Overview */ }
+    }
     setData(d => ({ ...d, projects: [p, ...d.projects] }));
     patchUi({ view: 'project', pid: p.id, tab: 'overview' });
     if (nf.github) window.setTimeout(() => void createRepoFor(p.id), 50);
     return true;
   }, [patchUi, toast, createRepoFor]);
+
+  // ── Brand kit (the Mosslight loading screen) ─────────────────────────────────
+  /** Writes the loading screen kit into the game's folder on this computer. */
+  const addLoadingScreen = useCallback(async (pid: string, tips?: string[]): Promise<string | null> => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    if (!p) return null;
+    const path = localFolder(p)?.path;
+    if (!isDesktop || !path) { toast('Open this project\'s folder on this computer first — that\'s where the screen goes'); return null; }
+    try {
+      const dir = await installKit(path, p, tips ?? p.brand?.tips ?? []);
+      updProj(pid, q => ({
+        ...q,
+        brand: { path: dir, device: deviceId, ts: now(), tips: tips ?? q.brand?.tips, wired: q.brand?.wired },
+        activity: [A('codex', 'Added the Mosslight loading screen'), ...q.activity],
+      }));
+      toast('Loading screen added — ' + dir);
+      return dir;
+    } catch (e) {
+      toast('Could not write the kit: ' + String((e as Error)?.message || e));
+      return null;
+    }
+  }, [toast, updProj]);
+
+  /** Asks Codex to put the screen in front of the game itself (in-engine where the templates can't go). */
+  const wireLoadingScreen = useCallback((pid: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    if (!p?.brand) return;
+    updProj(pid, q => ({ ...q, brand: q.brand && { ...q.brand, wired: true } }));
+    patchUi({ chatOpen: true });
+    void dispatch(pid, 'codex', kitPrompt(p, p.brand.path), 'brand kit');
+  }, [dispatch, patchUi, updProj]);
 
   const removeProject = useCallback((pid: string) => {
     setData(d => ({ ...d, projects: d.projects.filter(p => p.id !== pid) }));
@@ -1031,6 +1071,7 @@ export function useHub() {
     send, ask, dispatch, attachFiles, removeAttachment, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
+    addLoadingScreen, wireLoadingScreen,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,

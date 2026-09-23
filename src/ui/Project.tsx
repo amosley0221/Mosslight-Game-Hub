@@ -3,12 +3,13 @@ import { AGENTS, ASSET_KINDS, ORDER, PLATFORMS, PLAT_LABEL, TOOLS, WEB_ENGINES, 
 import { totalUsage, type Hub } from '../core/store';
 import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
-import { copyText, isDesktop, openExternal } from '../platform';
+import { copyText, isDesktop, launchPath, openExternal } from '../platform';
 import { RepoCard } from './GitHub';
 import { ArtTab, useProjectImages } from './Media';
 import { StoryTab } from './Story';
 import { MusicTab } from './Music';
-import { Dot, Glyph, coverOf } from './common';
+import { Dot, Glyph, asset, coverOf } from './common';
+import { deviceId } from '../sync/device';
 import { useImageSrc } from '../sync/images';
 import { TagPicks, launchProps, recommend, tileInfo } from './Library';
 
@@ -108,6 +109,41 @@ function StoryCard({ hub, p }: { hub: Hub; p: P }) {
   );
 }
 
+/** Overview card: the Mosslight loading screen — put it in the game folder, preview it, wire it in. */
+function BrandCard({ hub, p }: { hub: Hub; p: P }) {
+  const [busy, setBusy] = useState(false);
+  const here = isDesktop && !!p.brand && (!p.brand.device || p.brand.device === deviceId);
+  if (!isDesktop && !p.brand) return null;
+  const add = async () => { setBusy(true); await hub.addLoadingScreen(p.id); setBusy(false); };
+  return (
+    <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+        <h3 className="eyebrow">Loading screen</h3>
+        {p.brand && <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>added {new Date(p.brand.ts).toLocaleDateString()}</span>}
+      </div>
+      <div className="row" style={{ gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ flex: 'none', width: 132, aspectRatio: '16 / 9', borderRadius: 8, border: '1px solid var(--line-2)', background: 'var(--bg-flat)', display: 'grid', placeItems: 'center', gap: 4, overflow: 'hidden' }}>
+          <img src={asset('mosslight-logo.png')} alt="" style={{ height: 38, width: 'auto', display: 'block' }} />
+          <div style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 13, color: 'var(--text)', textAlign: 'center', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+          <div style={{ width: 70, height: 2, borderRadius: 2, background: 'var(--line-2)' }}><div style={{ width: '58%', height: '100%', background: 'var(--accent)' }} /></div>
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)' }}>
+            {p.brand
+              ? <>The studio screen is in <span className="mono" style={{ fontSize: 11.5 }}>{p.brand.path}</span> — the screen itself, the React component, the brand tokens and the logos. The agents know it's there.</>
+              : <>The Mosslight screen shown before the game boots: lantern monogram, “Mosslight Studios presents”, the game title, a progress bar and your tips. It goes in the game's folder, ready to run.</>}
+          </p>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <button className="btn" disabled={busy || !isDesktop} onClick={() => void add()}>{busy ? 'Writing…' : p.brand ? 'Rewrite the files' : 'Add loading screen'}</button>
+            {here && <button className="btn" onClick={() => void launchPath(p.brand!.path).catch(() => {})}>Show in folder</button>}
+            {p.brand && <button className="btn-accent" onClick={() => hub.wireLoadingScreen(p.id)}>Ask Codex to wire it in</button>}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function Project({ hub, p }: { hub: Hub; p: P }) {
   const { ui, settings, patchUi } = hub;
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -201,6 +237,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
       <StoryCard hub={hub} p={p} />
+      <BrandCard hub={hub} p={p} />
       <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
         <h3 className="eyebrow" style={{ marginBottom: 12 }}>GitHub</h3>
         <RepoCard hub={hub} p={p} />

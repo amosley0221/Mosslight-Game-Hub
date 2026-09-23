@@ -242,6 +242,23 @@ Attach files to any message with the **📎** button, by dragging them onto the 
 
 Attachments sync, so a screenshot you send from your phone is on the desktop too, and tapping one in the chat opens it. Big images are resized before they're sent, so a 4K screenshot doesn't cost a fortune in tokens.
 
+### The loading screen (brand kit)
+Every project can have the Mosslight screen that plays before the game boots. Tick **Add the Mosslight loading screen** when you create a project, or use the **Loading screen** card on any project's Overview.
+
+It writes `Mosslight/Brand` into the game folder:
+
+| File | What it's for |
+| --- | --- |
+| `loading.html` | The screen, ready to run. Your loader drives it: `window.mosslightLoading.progress(0–100)` and `.done()` |
+| `SplashScreen.jsx` | The same screen as a React component (`mode="splash"` or `mode="loading"`) |
+| `brand.css` | The tokens — colors dark and bone, fonts, the glow and rise animations |
+| `assets/` | Monogram, icon, wordmark, full lockup |
+| `README.md` | How to wire it into Unity, Unreal, Godot or a web game |
+
+The game's name and pitch are already filled in; edit the `TIPS` list in `loading.html` to put real hints on the screen.
+
+For Unity, Unreal or Godot the web files are the reference, not the implementation — **Ask Codex to wire it in** hands the agent the files plus the exact spec (colors, fonts, sizes, timings) and it rebuilds the screen in that engine against real load progress. All three agents carry the kit's path in their context, so they use it instead of inventing a look.
+
 ### What local agents can do
 In Auto or Local mode on the computer, Claude Code and Codex run **inside the project folder** and can edit files. Claude Code can also run builds and tests if you turn on **Let Claude Code run commands** in Settings. With auto backup on, changes are committed and pushed to GitHub afterwards.
 
