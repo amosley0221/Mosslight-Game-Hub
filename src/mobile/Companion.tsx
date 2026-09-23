@@ -35,14 +35,20 @@ const MOBILE_TABS: [string, string][] = [
 /** Same tabs as the desktop project page, sized for a thumb. */
 function TabBar({ tab, onPick }: { tab: string; onPick: (t: string) => void }) {
   return (
-    <div className="row" style={{ gap: 6, overflowX: 'auto', padding: '2px 0 10px', scrollbarWidth: 'none' }}>
+    // flex:none or a long list below squashes the strip to a few unclickable pixels; sticky keeps
+    // it reachable once you've scrolled into the builds.
+    <div
+      className="row no-bar"
+      // The negative margin lets the bar's background reach the screen edges inside a padded column.
+      style={{ gap: 6, overflowX: 'auto', padding: '8px 18px', margin: '0 -18px', flex: 'none', minHeight: 52, position: 'sticky', top: 0, zIndex: 3, background: 'var(--bg-flat)', borderBottom: '1px solid var(--line)' }}
+    >
       {MOBILE_TABS.map(([id, label]) => {
         const on = tab === id;
         return (
           <button
             key={id}
             onClick={() => onPick(id)}
-            style={{ flex: 'none', minHeight: 36, padding: '7px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, border: `1px solid ${on ? 'var(--accent)' : 'var(--line-2)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent)' : 'var(--muted)' }}
+            style={{ flex: 'none', minHeight: 36, padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', border: `1px solid ${on ? 'var(--accent)' : 'var(--line-2)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent)' : 'var(--muted)' }}
           >{label}</button>
         );
       })}

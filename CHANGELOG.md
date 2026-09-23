@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.16.1] - 2026-09-23
+
+### Fixed
+- **The Android tab strip was squashed to a few unclickable pixels** once a tab had a long list under it (Builds with a dozen shortcuts). The strip now keeps its height, sticks to the top while you scroll, spans the full width, and has no stray scrollbar.
+
 ## [0.16.0] - 2026-09-23
 
 ### Changed

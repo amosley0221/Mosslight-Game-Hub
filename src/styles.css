@@ -96,3 +96,7 @@ textarea:focus, input:focus, select:focus { outline: none; }
 .cover-wrap { position: relative; }
 .cover-edit { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; background: var(--chip-bg); border: 1px solid var(--line-2); color: var(--chip-text); font-size: 13px; opacity: 0; transition: opacity .15s; }
 .cover-wrap:hover .cover-edit, .cover-edit:focus { opacity: 1; }
+
+/* Horizontal strips (the phone's project tabs) scroll without a scrollbar over the content. */
+.no-bar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-bar::-webkit-scrollbar { display: none; }
