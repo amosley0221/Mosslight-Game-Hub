@@ -121,6 +121,89 @@ async fn find_files(root: String, exts: Vec<String>, max: usize) -> Result<Vec<F
     .map_err(|e| e.to_string())?
 }
 
+/// Folders that never hold a playable build (engine caches, sources, dependencies).
+const SKIP_BUILD_DIRS: &[&str] = &[
+    "node_modules", ".git", ".svn", "library", "temp", "obj", "intermediate", "deriveddatacache",
+    "saved", ".godot", ".import", ".vs", ".idea", "logs", "__pycache__", ".gradle", "venv",
+    "assets", "content", "source", "src", "scripts", "shaders", "art", "audio", "music",
+];
+
+/// Executables that ship beside a game but are never the game.
+const NOT_A_GAME: &[&str] = &[
+    "unitycrashhandler", "unitycrashhandler64", "crashreportclient", "unrealcefsubprocess",
+    "crashpad_handler", "vc_redist", "dxwebsetup", "dotnetfx", "uninstall", "unins000", "python",
+    "node", "ffmpeg", "adb", "7z",
+];
+
+/// Finds launchable builds under `root`, including inside Builds/ and other output folders —
+/// which `find_files` deliberately skips. A Unity or Unreal player is usually a few folders down.
+#[tauri::command]
+async fn find_builds(root: String, max: usize) -> Result<Vec<FoundFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = PathBuf::from(&root);
+        if !root_path.is_dir() {
+            return Err(format!("{root} isn't a folder on this computer"));
+        }
+        let exts = ["exe", "lnk", "url", "bat", "cmd", "app", "command", "sh", "apk", "aab"];
+        let mut out: Vec<FoundFile> = Vec::new();
+        let mut queue = std::collections::VecDeque::from([(root_path.clone(), 0usize)]);
+        while let Some((dir, depth)) = queue.pop_front() {
+            if out.len() >= max || depth > 5 {
+                continue;
+            }
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                let p = e.path();
+                let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+                // macOS .app bundles are folders, but they launch like a file.
+                if is_dir && ext != "app" {
+                    let lower = name.to_lowercase();
+                    if !SKIP_BUILD_DIRS.contains(&lower.as_str()) && !lower.ends_with("_data") {
+                        queue.push_back((p, depth + 1));
+                    }
+                    continue;
+                }
+                if !exts.contains(&ext.as_str()) {
+                    continue;
+                }
+                let stem = p.file_stem().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+                if NOT_A_GAME.iter().any(|b| stem.starts_with(b)) {
+                    continue;
+                }
+                let md = e.metadata().ok();
+                let folder = dir
+                    .strip_prefix(&root_path)
+                    .map(|x| x.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_default();
+                out.push(FoundFile {
+                    path: p.to_string_lossy().to_string(),
+                    name,
+                    folder,
+                    size: md.as_ref().map(|m| m.len()).unwrap_or(0),
+                    modified: md
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0),
+                });
+                if out.len() >= max {
+                    break;
+                }
+            }
+        }
+        // Newest first: the build you just made is the one you want to run.
+        out.sort_by(|a, b| b.modified.cmp(&a.modified));
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Writes the raw request body to the absolute path in the `x-path` header (URL-encoded).
 #[tauri::command]
 fn save_bytes(request: tauri::ipc::Request<'_>) -> Result<String, String> {
@@ -563,6 +646,7 @@ pub fn run_app() {
         .invoke_handler(tauri::generate_handler![
             scan_folder,
             find_files,
+            find_builds,
             save_bytes,
             read_file_bytes,
             copy_file,

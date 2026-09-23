@@ -331,8 +331,15 @@ function Builds({ hub, p }: { hub: Hub; p: P }) {
   const [draft, setDraft] = useState('');
   return (
     <>
-      <TabIntro text={`Star one to show it on the project page. Shortcuts and packages Codex produces show up here${isDesktop ? ' — new ones in the project folder or on your Desktop are picked up automatically' : ''}. Web builds open in the browser, desktop shortcuts launch through the native shell, Android builds install on a USB/Wi-Fi-connected device via ADB.`}>
-        <AgentButton agent="codex" onClick={() => hub.ask(`Package a fresh test build of ${p.name} and put a shortcut on my desktop.`, 'codex')}>Ask Codex for a fresh build</AgentButton>
+      <TabIntro text={`Star one to show it on the project page. Shortcuts and packages Codex produces show up here${isDesktop ? ' — new ones in the top of the project folder or on your Desktop appear on their own, and Scan folder for builds digs through Builds/, WindowsNoEditor/ and the rest' : ''}. Web builds open in the browser, desktop shortcuts launch through the native shell, Android builds install on a USB/Wi-Fi-connected device via ADB.`}>
+        <div className="row" style={{ gap: 8 }}>
+          {isDesktop && p.folder?.path && (
+            <button className="btn" disabled={hub.scanningBuilds} onClick={() => void hub.rescanBuilds(p.id)}>
+              {hub.scanningBuilds ? 'Looking…' : 'Scan folder for builds'}
+            </button>
+          )}
+          <AgentButton agent="codex" onClick={() => hub.ask(`Package a fresh test build of ${p.name} and put a shortcut on my desktop.`, 'codex')}>Ask Codex for a fresh build</AgentButton>
+        </div>
       </TabIntro>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 820 }}>
         {p.builds.map(b => (

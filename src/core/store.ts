@@ -8,7 +8,7 @@ import { prepareAttachments } from './attachments';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
   cancelAgentRun, copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
-  pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, fileSrc, type ScanResult,
+  pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, findBuilds, fileSrc, type ScanResult,
 } from '../platform';
 import { OS_LABEL, deviceId, deviceOs, localFolder } from '../sync/device';
 import { SyncEngine, loadSyncConfig, saveSyncConfig, type SyncConfig, type SyncState } from '../sync/engine';
@@ -112,6 +112,14 @@ const platformOfFile = (n: string): Platform => (/\.(apk|aab)$/i.test(n) ? 'andr
 const kindOfFile = (n: string) => (/\.(apk|aab)$/i.test(n) ? 'android' : /\.html?$/i.test(n) ? 'web' : 'desktop') as Build['kind'];
 const isUrl = (p: string) => /^https?:/i.test(p);
 const slug =(s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** "MosslightVillage.exe" → "MosslightVillage" (build names read better without the extension). */
+const stripExt = (n: string) => n.replace(/\.[^.]+$/, '');
+/** A build found deep in the folder, named by its file and the folder it sits in. */
+const buildFrom = (f: { path: string; name: string; folder: string; modified: number }): Build => ({
+  id: uid(), name: f.folder ? `${stripExt(f.name)} (${f.folder.split('/').pop()})` : stripExt(f.name),
+  path: f.path, kind: kindOfFile(f.name), platform: platformOfFile(f.name), by: 'codex',
+  ts: f.modified || Date.now(), device: deviceId,
+});
 
 /** Conventional folder inside a project where linked library assets are copied. */
 function assetFolderFor(p: Project) {
@@ -458,6 +466,7 @@ export function useHub() {
   const backupRef = useRef<(pid: string, reason?: string, silent?: boolean) => Promise<void>>();
   const [busyRepo, setBusyRepo] = useState<string | null>(null);
   const [sharing, setSharing] = useState<{ done: number; total: number } | null>(null);
+  const [scanningBuilds, setScanningBuilds] = useState(false);
   const myDeviceName = () => dataRef.current.devices?.[deviceId]?.name || OS_LABEL[deviceOs];
 
   /** Commit + push the project's local folder. `silent` = no toast when there's nothing to back up. */
@@ -572,6 +581,40 @@ export function useHub() {
     return true;
   }, [patchUi, toast, createRepoFor]);
 
+  /**
+   * Looks through the whole project folder for playable builds — Builds/, WindowsNoEditor/,
+   * export/ and the rest — not just files sitting at the top level.
+   */
+  const rescanBuilds = useCallback(async (pid: string): Promise<number> => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const path = p && localFolder(p)?.path;
+    if (!isDesktop || !path) { toast('This project has no folder on this computer'); return 0; }
+    setScanningBuilds(true);
+    try {
+      const found = await findBuilds(path);
+      const have = new Set(p.builds.map(b => b.path));
+      const skip = new Set(p.dismissed || []);
+      const fresh = found
+        .filter(f => !have.has(f.path) && !skip.has(f.path))
+        .slice(0, 12)
+        .map(buildFrom);
+      if (fresh.length) {
+        updProj(pid, q => ({
+          ...q, builds: [...fresh, ...q.builds],
+          spotlight: { buildId: fresh[0].id, ts: now() },
+          activity: [A('codex', `Found ${fresh.length} build${fresh.length === 1 ? '' : 's'} in the project folder`), ...q.activity],
+        }));
+      }
+      toast(fresh.length ? `Added ${fresh.length} build${fresh.length === 1 ? '' : 's'}` : found.length ? 'No new builds — everything found is already listed' : 'No builds found in this folder');
+      return fresh.length;
+    } catch (e) {
+      toast('Could not scan: ' + String((e as Error)?.message || e));
+      return 0;
+    } finally {
+      setScanningBuilds(false);
+    }
+  }, [toast, updProj]);
+
   // ── Brand kit (the Mosslight loading screen) ─────────────────────────────────
   /** Writes the loading screen kit into the game's folder on this computer. */
   const addLoadingScreen = useCallback(async (pid: string, tips?: string[]): Promise<string | null> => {
@@ -613,6 +656,12 @@ export function useHub() {
     let scan: ScanResult;
     try { scan = await scanFolder(path); } catch (e) { toast(String(e)); return null; }
     const det = await detectFromScan(scan);
+    // Builds usually live a few folders down (Builds/, WindowsNoEditor/, export/), not at the top.
+    const deep = await findBuilds(path).catch(() => []);
+    det.builds = [
+      ...det.builds,
+      ...deep.filter(f => !det.builds.some(b => b.path === f.path)).slice(0, 12).map(buildFrom),
+    ];
     const remote = await detectRepo(path).catch(() => null);
     const sameRepo = (p: Project) => !!remote && p.repo?.owner.toLowerCase() === remote.owner.toLowerCase() && p.repo?.name.toLowerCase() === remote.name.toLowerCase();
     const match = (p: Project) => p.id === prefer || sameRepo(p) || p.folder?.path === path || p.folder?.name === scan.name || p.name.toLowerCase() === scan.name.toLowerCase();
@@ -1071,7 +1120,7 @@ export function useHub() {
     send, ask, dispatch, attachFiles, removeAttachment, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
-    addLoadingScreen, wireLoadingScreen,
+    addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,

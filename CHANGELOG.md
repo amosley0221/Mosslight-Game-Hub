@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.11.0] - 2026-09-23
+
+### Fixed
+- **Builds in subfolders were invisible.** Mosslight only looked at the top level of the project folder, so a Unity game with its player in `Builds/` (or Unreal's `WindowsNoEditor/`, Godot's `export/`) showed "0 builds found". Opening a folder now searches through it, and **Test builds → Scan folder for builds** does the same for projects you already added.
+  - Engine caches and source folders are skipped, and the helpers that ship beside a game — UnityCrashHandler, CrashReportClient, crash pads, redistributables — are filtered out, so you get the game and not its plumbing.
+  - Builds are listed newest first and named after the folder they came from, and the newest becomes the one shown on the project page.
+
 ## [0.10.0] - 2026-09-23
 
 ### Added
