@@ -48,7 +48,8 @@ const later = () => new Promise(r => setTimeout(r, 3));
 describe('sync between devices', () => {
   it('a new device receives the whole library', async () => {
     const store = new FakeStore();
-    const pc = device(store, seedData());
+    const lib = seedData();
+    const pc = device(store, { ...lib, assets: lib.assets.map(a => ({ ...a, path: '/Mosslight/Library/' + a.name })) });
     const phone = device(store, empty());
     await pc.sync();
     await phone.sync();
