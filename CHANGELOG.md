@@ -3,6 +3,15 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.14.0] - 2026-09-23
+
+### Added
+- **Task cards on disk, so tasks are traceable.** Every task in a project with a local folder is mirrored to a Markdown card in `Docs/Tasks/` — `id`, `owner`, `status`, `created`, and a dated **## History** of every status change and who made it. The card is the record; the hub is a view of it.
+  - **Agents read and write them.** The card's path travels with every request, and agents are told to check the card before claiming anything about a task, and to set its `status:` and add a history line when they finish one — so "what's the status of card X?" has an answer any of them can verify.
+  - **It works both ways.** Cards you or an agent add to `Docs/Tasks/` by hand appear as tasks the next time you open the project, and a status changed in a card wins over the hub's copy. Ticking a task in the hub writes the change back to its card.
+  - **Git keeps the trail.** Because cards are files in the repo, "who moved this to done, and when" is answered by `git log`, not by trusting a claim in chat.
+  - Bodies are preserved: whatever you or the agents write under **## Objective** or **## Notes** stays, and only the front matter and history are maintained by the hub. **Tasks → Sync cards** reconciles on demand.
+
 ## [0.13.1] - 2026-09-23
 
 ### Fixed

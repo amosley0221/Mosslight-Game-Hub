@@ -338,13 +338,25 @@ function Tasks({ hub, p }: { hub: Hub; p: P }) {
     return (
       <div key={x.id} className="row hover-line" style={{ gap: 8, alignItems: 'flex-start', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 10px 10px 12px' }}>
         <button title="Cycle status" onClick={() => hub.cycleTask(p.id, x.id)} style={{ width: 14, height: 14, marginTop: 3, borderRadius: '50%', border: `2px solid ${x.status === 'todo' ? 'var(--dim)' : c}`, background: done ? c : 'transparent', flex: 'none', padding: 0 }} />
-        <span style={{ flex: 1, fontSize: 13, lineHeight: 1.4, color: done ? 'var(--muted)' : 'inherit', textDecoration: done ? 'line-through' : 'none' }}>{x.title}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, lineHeight: 1.4, color: done ? 'var(--muted)' : 'inherit', textDecoration: done ? 'line-through' : 'none' }}>{x.title}</span>
+          {x.card && <span className="mono ellipsis" style={{ display: 'block', fontSize: 10, color: 'var(--dim)', marginTop: 2 }}>{x.card}</span>}
+        </span>
         <button className="x" onClick={() => hub.updProj(p.id, q => ({ ...q, tasks: q.tasks.filter(y => y.id !== x.id) }))}>×</button>
       </div>
     );
   };
+  const cards = p.tasks.filter(x => x.card).length;
   return (
-    <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+    <>
+      {isDesktop && p.folder?.path && (
+        <TabIntro text={cards
+          ? `Every task is also a card in Docs/Tasks — id, owner, status and a dated history. That file is the record: agents read it, change its status there, and git keeps the trail. ${cards} of ${p.tasks.length} have one.`
+          : 'Tasks can be mirrored to Docs/Tasks as Markdown cards, so agents can read and verify them and git keeps their history.'}>
+          <button className="btn" onClick={() => void hub.syncCards(p.id, true)}>Sync cards</button>
+        </TabIntro>
+      )}
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
       {ORDER.map(a => (
         <section key={a} className="card" style={{ borderTop: `3px solid ${AGENTS[a].color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 300 }}>
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
@@ -355,7 +367,8 @@ function Tasks({ hub, p }: { hub: Hub; p: P }) {
           <input className="dashed-input" style={{ marginTop: 'auto' }} value={drafts[a] || ''} onChange={e => setDrafts(d => ({ ...d, [a]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') add(a); }} placeholder="Add task, Enter to save" />
         </section>
       ))}
-    </div>
+      </div>
+    </>
   );
 }
 

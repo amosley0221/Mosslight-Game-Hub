@@ -3,12 +3,12 @@ import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from '.
 import { planTeam, respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
-import type { AgentId, AgentMode, Asset, Attachment, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, StoryEntry, StorySection, Usage } from './types';
+import type { AgentId, AgentMode, Asset, Attachment, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, StoryEntry, StorySection, Task, TaskStatus, Usage } from './types';
 import { prepareAttachments } from './attachments';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
   cancelAgentRun, copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
-  pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, findBuilds, fileSrc, type ScanResult,
+  pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, findBuilds, findFiles, fileSrc, type ScanResult,
 } from '../platform';
 import { OS_LABEL, deviceId, deviceOs, localFolder } from '../sync/device';
 import { SyncEngine, loadSyncConfig, saveSyncConfig, type SyncConfig, type SyncState } from '../sync/engine';
@@ -20,6 +20,7 @@ import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
 import { installKit, kitPrompt } from '../brand/kit';
 import { loadState, readLegacy, saveState } from './storage';
 import { beginRun, endRun, startRun } from './runs';
+import { CARD_DIR, cardRelPath, parseCard, writeCard } from './cards';
 
 const SKEY = 'gdh:settings:v1';
 
@@ -279,13 +280,20 @@ export function useHub() {
   /** Applies a finished reply's side effects (tasks, art, builds, code, usage) to the project. */
   const applyReply = useCallback((key: string, agent: AgentId, text: string, res: Reply) => {
     const proj = dataRef.current.projects.find(p => p.id === key) || null;
+    const newCards: Task[] = [];
     setData(d => {
       const mine = { ...ZERO, ...(d.usageBy[deviceId] || {}) };
       const usageBy = res.offline || !res.tokens ? d.usageBy : { ...d.usageBy, [deviceId]: { ...mine, [agent]: { calls: mine[agent].calls + 1, tokens: mine[agent].tokens + res.tokens } } };
       const projects = !proj || res.offline ? d.projects : d.projects.map(p => {
         if (p.id !== proj.id) return p;
         const q = { ...p };
-        if (res.tasks?.length) { q.tasks = [...q.tasks, ...res.tasks.map(t => T(t.agent || agent, t.title, 'todo', 0))]; q.activity = [...res.tasks.map(t => A(t.agent || agent, 'Task added: ' + t.title)), ...q.activity]; }
+        if (res.tasks?.length) {
+          const fresh = res.tasks.map(t => T(t.agent || agent, t.title, 'todo', 0));
+          q.tasks = [...q.tasks, ...fresh];
+          q.activity = [...res.tasks.map(t => A(t.agent || agent, 'Task added: ' + t.title)), ...q.activity];
+          // Each new task gets its card in Docs/Tasks, so it exists in the repository too.
+          newCards.push(...fresh);
+        }
         if (res.art?.length) { q.art = [...res.art.map(a => ({ id: uid(), title: a.title, prompt: a.prompt, imagePath: a.imagePath, ts: now() })), ...q.art]; q.activity = [...res.art.map(a => A('grok', 'Generated concept: ' + a.title)), ...q.activity]; }
         if (res.builds?.length) {
           const fresh = res.builds.map(b => ({ id: uid(), name: b.name, path: b.path, kind: b.kind || kindOfFile(b.path), platform: b.platform || platformOfFile(b.path), by: 'codex' as AgentId, ts: now(), device: isUrl(b.path) ? undefined : deviceId }));
@@ -300,7 +308,11 @@ export function useHub() {
       });
       return { ...d, usageBy, projects };
     });
+    if (newCards.length && proj) for (const t of newCards) void saveCardRef.current?.(proj.id, t, `raised by ${AGENTS[agent].name}`);
   }, [setData]);
+
+  /** Set once `saveCard` exists below; applyReply is defined before it. */
+  const saveCardRef = useRef<(pid: string, task: Task, change?: string) => Promise<void>>();
 
   const approveRef = useRef<(key: string, m: Extract<Message, { type: 'handoff' }>, prompt?: string, auto?: boolean) => void>();
 
@@ -506,11 +518,70 @@ export function useHub() {
   const declinePlan = useCallback((key: string, id: string) => updPlan(key, id, () => ({ status: 'declined' })), [updPlan]);
 
   // ── Tasks ─────────────────────────────────────────────────────────────────────
-  const cycleTask = useCallback((pid: string, tid: string) => updProj(pid, p => {
-    const tasks = p.tasks.map(t => (t.id === tid ? { ...t, status: t.status === 'todo' ? 'doing' : t.status === 'doing' ? 'done' : 'todo' } as typeof t : t));
-    const t = tasks.find(x => x.id === tid)!;
-    return { ...p, tasks, activity: [A(t.agent, (t.status === 'done' ? 'Completed ' : t.status === 'doing' ? 'Started ' : 'Reopened ') + t.title), ...p.activity] };
-  }), [updProj]);
+  // ── Task cards on disk ───────────────────────────────────────────────────────
+  /** Mirrors a task to its card in Docs/Tasks, so the repository holds the record. */
+  const saveCard = useCallback(async (pid: string, task: Task, change?: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const root = p && localFolder(p)?.path;
+    if (!isDesktop || !root) return;
+    try {
+      await writeCard(root, task, change);
+      const rel = cardRelPath(task);
+      updProj(pid, q => ({ ...q, tasks: q.tasks.map(t => (t.id === task.id && t.card !== rel ? { ...t, card: rel } : t)) }));
+    } catch { /* folder not writable — the task still lives in the hub */ }
+  }, [updProj]);
+  saveCardRef.current = saveCard;
+
+  /**
+   * Reconciles the hub's tasks with the cards in Docs/Tasks: cards the hub doesn't know about
+   * become tasks, tasks without a card get one, and a card's status wins — an agent that moved
+   * a card to done has changed the record, not just its own copy.
+   */
+  const syncCards = useCallback(async (pid: string, announce = false) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const root = p && localFolder(p)?.path;
+    if (!isDesktop || !root) { if (announce) toast('This project has no folder on this computer'); return; }
+    let found: { path: string; folder: string; text: string }[] = [];
+    try {
+      const files = (await findFiles(root, ['md'], 400)).filter(f => f.folder.toLowerCase() === CARD_DIR.join('/').toLowerCase());
+      found = await Promise.all(files.map(async f => ({ path: f.path, folder: f.folder, text: new TextDecoder().decode(await readFileBytes(f.path, 200_000)) })));
+    } catch { /* no Docs/Tasks yet */ }
+
+    const cards = found.map(f => ({ ...parseCard(f.text)!, rel: `${f.folder}/${baseName(f.path)}` })).filter(c => c.id);
+    let added = 0, moved = 0;
+    updProj(pid, q => {
+      const byId = new Map(cards.map(c => [c.id, c]));
+      const tasks = q.tasks.map(t => {
+        const c = byId.get(t.id);
+        if (!c) return t;
+        if (c.status !== t.status) moved++;
+        return { ...t, title: c.title || t.title, agent: c.owner, status: c.status, card: c.rel };
+      });
+      const known = new Set(tasks.map(t => t.id));
+      for (const c of cards) {
+        if (known.has(c.id)) continue;
+        added++;
+        tasks.push({ id: c.id, agent: c.owner, title: c.title, status: c.status, ts: c.created || now(), card: c.rel });
+      }
+      return { ...q, tasks };
+    });
+    // Anything the hub has but the folder doesn't gets a card written for it.
+    const after = dataRef.current.projects.find(x => x.id === pid);
+    const missing = (after?.tasks || []).filter(t => !cards.some(c => c.id === t.id));
+    for (const t of missing) await saveCard(pid, t, 'card created from the hub');
+    if (announce) toast(`${cards.length} card${cards.length === 1 ? '' : 's'} in Docs/Tasks${added ? ` · ${added} new here` : ''}${moved ? ` · ${moved} status change${moved === 1 ? '' : 's'}` : ''}${missing.length ? ` · wrote ${missing.length}` : ''}`);
+  }, [saveCard, toast, updProj]);
+
+  const cycleTask = useCallback((pid: string, tid: string) => {
+    let changed: { task: Task; from: TaskStatus } | null = null;
+    updProj(pid, p => {
+      const tasks = p.tasks.map(t => (t.id === tid ? { ...t, status: t.status === 'todo' ? 'doing' : t.status === 'doing' ? 'done' : 'todo' } as typeof t : t));
+      const t = tasks.find(x => x.id === tid)!;
+      changed = { task: t, from: p.tasks.find(x => x.id === tid)!.status };
+      return { ...p, tasks, activity: [A(t.agent, (t.status === 'done' ? 'Completed ' : t.status === 'doing' ? 'Started ' : 'Reopened ') + t.title), ...p.activity] };
+    });
+    if (changed) void saveCard(pid, changed.task, `${changed.from} → ${changed.task.status}`);
+  }, [saveCard, updProj]);
 
   // ── GitHub backups ────────────────────────────────────────────────────────────
   const backingUp = useRef(new Set<string>());
@@ -704,7 +775,8 @@ export function useHub() {
     if (!p || !localFolder(p)?.path) return;
     if (p.brief && now() - p.brief.ts < 60_000) return;
     void refreshBrief(openedPid);
-  }, [openedPid, refreshBrief]);
+    void syncCards(openedPid);
+  }, [openedPid, refreshBrief, syncCards]);
 
   // ── Brand kit (the Mosslight loading screen) ─────────────────────────────────
   /** Writes the loading screen kit into the game's folder on this computer. */
@@ -1211,7 +1283,7 @@ export function useHub() {
     send, ask, dispatch, attachFiles, removeAttachment, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
-    addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief,
+    addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief, syncCards,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,

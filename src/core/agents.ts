@@ -78,8 +78,11 @@ function projectContext(proj: Project | null) {
     ...(proj.music?.length
       ? ['Music the user has written for this game (use these exact files when asked to put music in the game):', ...proj.music.slice(0, 40).map(m => `- "${m.name}" → ${m.path}`)]
       : []),
-    'Open tasks:',
-    ...proj.tasks.filter(t => t.status !== 'done').map(t => `- [${AGENTS[t.agent].name}] ${t.title} (${t.status})`),
+    // Cards are the record: an agent can open one, check its history and change its status there.
+    proj.tasks.some(t => t.card)
+      ? 'Open tasks — each one is a card in Docs/Tasks. The card file is the record, not this list: read it before claiming anything about a task, and when you finish one, set its `status:` and add a line under ## History rather than only saying so here.'
+      : 'Open tasks:',
+    ...proj.tasks.filter(t => t.status !== 'done').map(t => `- [${AGENTS[t.agent].name}] ${t.title} (${t.status})${t.card ? ` — ${t.card}` : ''}`),
   ].join('\n');
 }
 

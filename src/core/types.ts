@@ -4,7 +4,11 @@ export type Platform = 'windows' | 'mac' | 'android' | 'web';
 export type TaskStatus = 'todo' | 'doing' | 'done';
 export type BuildKind = 'desktop' | 'web' | 'android';
 
-export interface Task { id: string; agent: AgentId; title: string; status: TaskStatus; ts: number }
+export interface Task {
+  id: string; agent: AgentId; title: string; status: TaskStatus; ts: number;
+  /** Card file for this task, relative to the project folder (Docs/Tasks/…). */
+  card?: string;
+}
 export interface Art { id: string; title: string; prompt: string; imagePath?: string; ts: number }
 export interface GddSection { id: string; title: string; body: string; agent: AgentId }
 export interface Build {
