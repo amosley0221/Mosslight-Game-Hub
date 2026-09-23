@@ -373,13 +373,16 @@ async function callCodexCli(system: string, text: string, cwd: string | undefine
   const badFlag = (r: { ok: boolean; cancelled?: boolean; stderr: string }) =>
     !r.ok && !r.cancelled && /unexpected argument|unknown (option|argument)|unrecognized/i.test(r.stderr);
 
-  let res = await runAgentCliStream('codex', [...base, '--json', prompt], '', cwd, io.runId || '', onLine);
+  // `-` tells codex to read the prompt from stdin. As an argument it would blow Windows'
+  // ~32KB command-line limit ("The filename or extension is too long", os error 206) as soon as
+  // a project has an AGENTS.md, a story bible and some history.
+  let res = await runAgentCliStream('codex', [...base, '--json', '-'], prompt, cwd, io.runId || '', onLine);
   if (badFlag(res)) {
     // An older Codex: same sandbox, the flag it used to be called by.
-    res = await runAgentCliStream('codex', [...legacy, '--json', prompt], '', cwd, io.runId || '', onLine);
+    res = await runAgentCliStream('codex', [...legacy, '--json', '-'], prompt, cwd, io.runId || '', onLine);
     if (badFlag(res)) {
       // Older still, with no JSONL events: run it plainly and take the whole output.
-      res = await runAgentCliStream('codex', [...legacy, prompt], '', cwd, io.runId || '', l => io.onText?.(l));
+      res = await runAgentCliStream('codex', [...legacy, '-'], prompt, cwd, io.runId || '', l => io.onText?.(l));
       last = res.stdout.trim();
     }
   }

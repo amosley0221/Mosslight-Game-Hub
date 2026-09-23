@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.23.1] - 2026-09-23
+
+### Fixed
+- **Codex refused to start on a real project: "The filename or extension is too long" (os error 206).** The prompt went to Codex as a command-line argument, and Windows caps a command line at about 32,000 characters — which a project with an `AGENTS.md`, a story bible, chat history and a long instruction passes easily. Codex now reads the prompt from standard input, the same as Claude Code since 0.21.1. Verified against Codex 0.156.
 ## [0.23.0] - 2026-09-23
 
 ### Changed
