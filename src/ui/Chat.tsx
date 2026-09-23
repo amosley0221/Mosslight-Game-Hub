@@ -204,9 +204,10 @@ export function Composer({ hub, compact }: { hub: Hub; compact?: boolean }) {
   const { ui, patchUi, settings } = hub;
   const lead = settings.teamLead || 'codex';
   const team = ui.forced === 'team';
-  const preview = team ? { agent: lead, hit: 'team' } : ui.forced ? { agent: ui.forced, hit: 'manual' } : route(ui.input);
+  const forcedAgent: AgentId | null = ui.forced && ui.forced !== 'team' ? ui.forced : null;
+  const preview: { agent: AgentId | null; hit?: string } = team ? { agent: lead, hit: 'team' } : forcedAgent ? { agent: forcedAgent, hit: 'manual' } : route(ui.input);
   const label = team ? `team → ${AGENTS[lead].name} plans, you approve`
-    : !ui.input.trim() ? (ui.forced ? 'manual → ' + AGENTS[ui.forced].name : 'auto-route')
+    : !ui.input.trim() ? (forcedAgent ? 'manual → ' + AGENTS[forcedAgent].name : 'auto-route')
     : preview.agent ? '→ ' + AGENTS[preview.agent].name + (preview.hit && preview.hit !== 'manual' ? ` · "${preview.hit}"` : '') : '→ will ask you';
   const picks: (AgentId | 'team' | null)[] = [null, 'team', ...ORDER];
   return (

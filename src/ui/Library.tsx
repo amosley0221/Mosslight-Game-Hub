@@ -102,7 +102,7 @@ export function Library({ hub, onNew, onSettings }: { hub: Hub; onNew: () => voi
           return (
             <div key={p.id} className="card hover-line rise" style={{ borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <div style={{ position: 'relative', aspectRatio: '16/10', background: 'var(--well)' }}>
-                <ImageSlot src={coverOf(p)} placeholder="Drop cover art" onFile={f => void hub.setCoverImage(p.id, f)} />
+                <ImageSlot src={coverOf(p)} placeholder="No cover yet" onFile={f => void hub.setCoverImage(p.id, f)} onOpen={() => hub.patchUi({ view: 'project', pid: p.id, tab: 'overview' })} />
                 <div className="row wrap" style={{ position: 'absolute', top: 10, left: 10, right: 60, gap: 6, pointerEvents: 'none' }}>
                   {p.engines.map(e => <span key={e} className="mono" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)' }}>{engineName(e)}</span>)}
                   {p.platforms.map(e => <span key={e} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)', opacity: .85 }}>{PLAT_LABEL[e]}</span>)}

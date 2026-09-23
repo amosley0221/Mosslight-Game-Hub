@@ -27,8 +27,12 @@ export function Typing({ color }: { color: string }) {
   return <div className="typing"><span style={{ background: color }} /><span style={{ background: color }} /><span style={{ background: color }} /></div>;
 }
 
-/** Drop-or-browse image slot. Shows the image when set. */
-export function ImageSlot({ src, placeholder, onFile, compact }: { src?: string; placeholder: string; onFile?: (f: File) => void; compact?: boolean }) {
+/**
+ * Drop-or-browse image slot. Shows the image when set.
+ * With `onOpen`, a click opens that instead of the file picker (library tiles open the project);
+ * dropping an image still replaces it.
+ */
+export function ImageSlot({ src, placeholder, onFile, onOpen, compact, hint }: { src?: string; placeholder: string; onFile?: (f: File) => void; onOpen?: () => void; compact?: boolean; hint?: string }) {
   const [drag, setDrag] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const url = useImageSrc(src);
@@ -36,17 +40,17 @@ export function ImageSlot({ src, placeholder, onFile, compact }: { src?: string;
   return (
     <div
       className={'slot' + (url ? '' : ' empty') + (drag ? ' drag' : '')}
-      onClick={e => { if (onFile) { e.stopPropagation(); input.current?.click(); } }}
+      onClick={e => { if (onOpen) { e.stopPropagation(); onOpen(); } else if (onFile) { e.stopPropagation(); input.current?.click(); } }}
       onDragOver={e => { if (onFile) { e.preventDefault(); setDrag(true); } }}
       onDragLeave={() => setDrag(false)}
       onDrop={e => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files?.[0]); }}
       style={onFile ? undefined : { cursor: 'default' }}
     >
-      {url ? <img src={url} alt={placeholder} draggable={false} /> : (
+      {url ? <><img src={url} alt={placeholder} draggable={false} />{hint && <span className="slot-hint">{hint}</span>}</> : (
         <div style={{ padding: 8 }}>
           <svg width={compact ? 18 : 24} height={compact ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ opacity: .7 }}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /></svg>
           <div style={{ fontWeight: 600, marginTop: 4 }}>{placeholder}</div>
-          {onFile && !compact && <div style={{ fontSize: 11, marginTop: 2 }}>or <u>browse files</u></div>}
+          {onFile && !onOpen && !compact && <div style={{ fontSize: 11, marginTop: 2 }}>or <u>browse files</u></div>}
         </div>
       )}
       {onFile && <input ref={input} type="file" accept="image/*" hidden onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />}

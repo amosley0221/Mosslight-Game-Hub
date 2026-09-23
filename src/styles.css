@@ -51,8 +51,10 @@ textarea:focus, input:focus, select:focus { outline: none; }
 .modal { background: var(--panel-solid); border: 1px solid var(--line-3); border-radius: 18px; padding: 22px; display: flex; flex-direction: column; max-height: 90vh; overflow: auto; color: var(--text); }
 .switch { position: relative; width: 38px; height: 22px; border-radius: 11px; border: 0; flex: none; padding: 0; }
 .switch span { position: absolute; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
-.slot { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 12px; cursor: pointer; }
-.slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.slot { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 12px; cursor: pointer; overflow: hidden; }
+.slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.slot .slot-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); background: var(--chip-bg); color: var(--chip-text); border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 600; opacity: 0; transition: opacity .15s; pointer-events: none; white-space: nowrap; }
+.slot:hover .slot-hint { opacity: 1; }
 .slot.empty { border: 1px dashed var(--line-3); }
 .slot.drag { background: var(--accent-soft); border-color: var(--accent); }
 .typing { display: flex; gap: 4px; padding: 6px 0; }

@@ -33,8 +33,17 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
   return (
     <>
       <div className="project-head" style={{ display: 'grid', gridTemplateColumns: '200px minmax(0,1fr)', gap: 22, alignItems: 'start', marginBottom: 22 }}>
-        <div style={{ position: 'relative', aspectRatio: '16/10', borderRadius: 14, overflow: 'hidden', background: 'var(--well)' }}>
-          <ImageSlot src={coverOf(p)} placeholder="Cover art" onFile={f => void hub.setCoverImage(p.id, f)} />
+        <div>
+          <div style={{ position: 'relative', aspectRatio: '16/10', borderRadius: 14, overflow: 'hidden', background: 'var(--well)' }}>
+            <ImageSlot src={coverOf(p)} placeholder="Add cover art" hint="Click to change cover" onFile={f => void hub.setCoverImage(p.id, f)} />
+          </div>
+          <div className="row" style={{ gap: 6, marginTop: 8 }}>
+            <label className="btn-ghost" style={{ padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>
+              {coverOf(p) ? 'Change cover' : 'Add cover'}
+              <input type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void hub.setCoverImage(p.id, f); e.target.value = ''; }} />
+            </label>
+            {coverOf(p) && <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => hub.updProj(p.id, q => ({ ...q, coverImage: undefined, coverArt: undefined }))}>Remove</button>}
+          </div>
         </div>
         <div style={{ minWidth: 0 }}>
           <div className="row wrap" style={{ gap: 10 }}>

@@ -357,7 +357,8 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
       io.onStep?.(`${cliName} failed — switching to the API`);
     }
   }
-  if (key && mode !== 'local') {
+  // (Local mode has already returned or thrown above.)
+  if (key) {
     io.onVia?.('api');
     const r = await callApi(agent, key, settings.models[agent], withRepo(systemFor(false)), text, io);
     return { ...r, via: 'api', note };

@@ -51,7 +51,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
               return (
                 <div key={p.id} className="card rise" style={{ borderRadius: 16, overflow: 'hidden' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '96px minmax(0,1fr)', gap: 12 }}>
-                    <div style={{ position: 'relative', aspectRatio: '1', background: 'var(--well)' }}><ImageSlot compact src={coverOf(p)} placeholder="Cover" onFile={f => void hub.setCoverImage(p.id, f)} /></div>
+                    <div style={{ position: 'relative', aspectRatio: '1', background: 'var(--well)' }}><ImageSlot compact src={coverOf(p)} placeholder="Cover" onOpen={() => patchUi({ view: 'project', pid: p.id })} /></div>
                     <button onClick={() => patchUi({ view: 'project', pid: p.id })} style={{ padding: '12px 12px 12px 0', display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, textAlign: 'left', background: 'none', border: 0 }}>
                       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}><span style={{ fontWeight: 600, fontSize: 15 }}>{p.name}</span><span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{t.done}/{t.total}</span></div>
                       <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{p.tagline}</span>
@@ -87,7 +87,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
       ) : (
         <div ref={scroller} style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ position: 'relative', aspectRatio: '16/10', background: 'var(--well)', flex: 'none' }}>
-            <ImageSlot src={coverOf(proj)} placeholder="Cover art" onFile={f => void hub.setCoverImage(proj.id, f)} />
+            <ImageSlot src={coverOf(proj)} placeholder="Tap to add cover art" hint="Tap to change cover" onFile={f => void hub.setCoverImage(proj.id, f)} />
             <button onClick={() => patchUi({ view: 'library', pid: null })} style={{ position: 'absolute', top: 12, left: 12, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 600, minHeight: 32 }}>← Games</button>
           </div>
           <div style={{ padding: '16px 18px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
