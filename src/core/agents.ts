@@ -35,6 +35,29 @@ export const AGENT_KEY: Record<AgentId, { key: string; label: string; url: strin
 const shortOf = (text: string) => text.replace(/\[Handoff[^\]]*\]\s*/, '').split('\n')[0].slice(0, 70);
 const estTokens = (...s: string[]) => Math.round(s.reduce((n, x) => n + x.length, 0) / 4);
 
+/**
+ * The story bible (characters, maps, vehicles…), trimmed to fit: every entry's name,
+ * plus its notes for the first entries of each section, and where its pictures live.
+ */
+function bibleContext(proj: Project): string[] {
+  const sections = (proj.story || []).filter(s => s.entries.length);
+  if (!sections.length) return [];
+  const out = ['Story bible — the user\'s own canon. Use these names, details and pictures; don\'t invent replacements:'];
+  let budget = 6000;
+  for (const s of sections) {
+    out.push(`${s.title}:`);
+    for (const e of s.entries) {
+      const notes = (e.body || '').replace(/\s+/g, ' ').trim();
+      const room = Math.max(0, Math.min(400, budget));
+      const line = `- ${e.name}${notes && room ? ` — ${notes.slice(0, room)}${notes.length > room ? '…' : ''}` : ''}`;
+      budget -= line.length;
+      const pics = e.images.filter(p => !p.startsWith('img:'));
+      out.push(line + (pics.length ? `\n  pictures: ${pics.slice(0, 3).join(', ')}${pics.length > 3 ? ` (+${pics.length - 3} more)` : ''}` : ''));
+    }
+  }
+  return out;
+}
+
 function projectContext(proj: Project | null) {
   if (!proj) return 'No project open — this is the hub-wide chat.';
   return [
@@ -43,7 +66,8 @@ function projectContext(proj: Project | null) {
     `Platforms: ${proj.platforms.join(', ')}`,
     `Traits: ${proj.tags.join(', ') || 'none'}`,
     localFolder(proj) ? `Local folder: ${localFolder(proj)!.path}` : 'No local folder on this device.',
-    ...(proj.summary ? ['Story: ' + proj.summary.slice(0, 700)] : []),
+    ...(proj.summary ? ['Story: ' + proj.summary.slice(0, 1500)] : []),
+    ...bibleContext(proj),
     ...(proj.music?.length
       ? ['Music the user has written for this game (use these exact files when asked to put music in the game):', ...proj.music.slice(0, 40).map(m => `- "${m.name}" → ${m.path}`)]
       : []),
@@ -110,7 +134,7 @@ Do not modify any files. Reply with ONLY this JSON, no prose:
 async function callClaudeApi(key: string, model: string, system: string, text: string, io: RunIO, files: Attachment[] = []) {
   const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, fetch: httpFetch });
   const blocks = await claudeBlocks(files);
-  const content = blocks.length ? ([...blocks, { type: 'text', text }] as Anthropic.ContentBlockParam[]) : text;
+  const content = blocks.length ? ([...blocks, { type: 'text', text }] as unknown as Anthropic.ContentBlockParam[]) : text;
   const stream = client.messages.stream({ model, max_tokens: 16000, system, messages: [{ role: 'user', content }] }, { signal: io.signal });
   stream.on('text', (_delta, snapshot) => io.onText?.(snapshot));
   const res = await stream.finalMessage();

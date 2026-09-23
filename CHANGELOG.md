@@ -5,6 +5,9 @@ at the top before releasing — the release workflow refuses to run without one.
 
 ## [0.9.0] - 2026-09-23
 
+### Changed
+- **Agents read the story bible.** Every request now carries your story, your sections and each character, map or vehicle in them — names, notes and where their pictures are on disk — so Codex, Claude and Grok write to your canon instead of inventing their own.
+
 ### Added
 - **Attach files to any chat message.** A 📎 button in the composer, drag-and-drop onto the chat, or paste straight from the clipboard — screenshots, mp3s, zips, PDFs, text and code files. Up to 12 files per message.
   - **Screenshots and PDFs go to the agent as real images**, so Codex, Claude and Grok can see what you see instead of guessing from a description.
