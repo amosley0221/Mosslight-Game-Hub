@@ -3,6 +3,14 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.15.0] - 2026-09-23
+
+### Added
+- **Pictures show up in the chat.** A reply that produced images now shows them under it as thumbnails, with **Add to Art**, **Open Art →** and a **cover** button on each one. Click a thumbnail to open it full size.
+  - **Concept art Grok generates** appears in the reply that asked for it, instead of only turning up in the Art tab.
+  - **Screenshots and renders a local run produced** are found too: files Claude Code or Codex wrote directly, plus anything new in the project's capture folders (`Saved/Screenshots`, `Screenshots`, `Captures`, `concept`, `Docs/Reviews`, `Tools/RuntimeReviews`, `export`, …) since the run started. So "run the capture tool and show me the fuel station" ends with the picture in the chat.
+  - **Add to Art** pins them as project art, so they show even when the Art tab's folder filter would hide them.
+
 ## [0.14.1] - 2026-09-23
 
 ### Fixed

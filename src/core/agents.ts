@@ -24,6 +24,8 @@ export interface RunIO {
   runId?: string;
   /** Files the user attached to the message. */
   files?: Attachment[];
+  /** Called with each file a local agent writes, so pictures it made can be shown. */
+  onFile?: (path: string) => void;
 }
 
 /** API key names stored in the keychain, per agent. */
@@ -278,7 +280,11 @@ async function callClaudeCli(system: string, text: string, cwd: string | undefin
     if (j.type === 'system' && j.subtype === 'init') io.onStep?.(`Claude Code started${j.model ? ` (${j.model})` : ''}`);
     if (j.type === 'assistant') {
       for (const b of j.message?.content || []) {
-        if (b.type === 'tool_use') io.onStep?.(describeClaudeTool(b.name, b.input));
+        if (b.type === 'tool_use') {
+          io.onStep?.(describeClaudeTool(b.name, b.input));
+          const p = b.input?.file_path || b.input?.path || b.input?.notebook_path;
+          if (typeof p === 'string') io.onFile?.(p);
+        }
         if (b.type === 'text' && b.text) { streamed = streamed ? `${streamed}\n\n${b.text}` : b.text; io.onText?.(streamed); }
       }
     }
@@ -309,7 +315,11 @@ async function callCodexCli(system: string, text: string, cwd: string | undefine
     const item = j.item || {};
     const msg = j.msg || {};
     if (j.type === 'item.started' && item.type === 'command_execution') io.onStep?.(`Running ${String(item.command || '').slice(0, 90)}`);
-    else if (j.type === 'item.completed' && item.type === 'file_change') io.onStep?.(`Edited ${(item.changes || []).map((c: { path: string }) => shortPath(c.path)).join(', ')}`);
+    else if (j.type === 'item.completed' && item.type === 'file_change') {
+      const changed = (item.changes || []) as { path: string }[];
+      changed.forEach(c => io.onFile?.(c.path));
+      io.onStep?.(`Edited ${changed.map(c => shortPath(c.path)).join(', ')}`);
+    }
     else if (j.type === 'item.completed' && item.type === 'reasoning' && item.text) io.onStep?.(`Thinking: ${String(item.text).replace(/\s+/g, ' ').slice(0, 80)}`);
     else if (j.type === 'item.started' && item.type === 'mcp_tool_call') io.onStep?.(`Using ${item.tool || 'a tool'}`);
     else if (j.type === 'item.completed' && item.type === 'agent_message') { last = String(item.text || ''); io.onText?.(last); }

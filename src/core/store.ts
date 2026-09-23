@@ -21,6 +21,7 @@ import { installKit, kitPrompt } from '../brand/kit';
 import { loadState, readLegacy, saveState } from './storage';
 import { beginRun, endRun, startRun } from './runs';
 import { CARD_DIR, cardRelPath, parseCard, writeCard } from './cards';
+import { runImages } from './shots';
 
 const SKEY = 'gdh:settings:v1';
 
@@ -342,6 +343,8 @@ export function useHub() {
 
       // Stream updates are batched so a fast token stream doesn't re-render (or sync) on every word.
       const live = { text: '', steps: [] as string[], via: '' };
+      const wrote = new Set<string>();
+      const runStart = now();
       let timer: number | undefined;
       const flush = () => { timer = undefined; updAgentMsg(key, id, m => ({ text: live.text, steps: live.steps.slice(-40), route: live.via ? `${routeLabel} · ${live.via}` : m.route })); };
       const schedule = () => { if (timer === undefined) timer = window.setTimeout(flush, 250); };
@@ -356,6 +359,7 @@ export function useHub() {
           signal: ctrl.signal,
           runId,
           files,
+          onFile: p => wrote.add(p),
         });
       } catch (e) {
         res = ctrl.signal.aborted
@@ -372,6 +376,14 @@ export function useHub() {
         steps: live.steps.slice(-40), route: res.via ? `${routeLabel} · ${res.via}` : routeLabel,
       });
       applyReply(key, agent, text, res);
+      // Pictures this run made: art the agent generated, files it wrote, and anything new in the
+      // project's capture folders (engine screenshots, renders).
+      void (async () => {
+        const made = res.art?.map(a => a.imagePath).filter((p): p is string => !!p) || [];
+        const shots = isDesktop ? await runImages(proj ? localFolder(proj)?.path : undefined, runStart, wrote).catch(() => []) : [];
+        const images = [...new Set([...made, ...shots])];
+        if (images.length) updAgentMsg(key, id, { images });
+      })();
       if (res.handoff && !res.stopped) {
         const h: Extract<Message, { type: 'handoff' }> = { id: uid(), type: 'handoff', from: agent, to: res.handoff.to, reason: res.handoff.reason, prompt: res.handoff.prompt, status: 'pending', userText: text };
         push(key, h);
@@ -518,6 +530,16 @@ export function useHub() {
   const declinePlan = useCallback((key: string, id: string) => updPlan(key, id, () => ({ status: 'declined' })), [updPlan]);
 
   // ── Tasks ─────────────────────────────────────────────────────────────────────
+  /** Pins pictures from a reply into the project's Art, where folder filters can't hide them. */
+  const addArtImages = useCallback((pid: string, paths: string[], title = 'From chat') => {
+    updProj(pid, p => {
+      const have = new Set(p.art.map(a => a.imagePath));
+      const fresh = paths.filter(x => !have.has(x)).map(x => ({ id: uid(), title: `${title} · ${baseName(x)}`, prompt: '', imagePath: x, ts: now() }));
+      return fresh.length ? { ...p, art: [...fresh, ...p.art], activity: [A('codex', `Added ${fresh.length} picture${fresh.length === 1 ? '' : 's'} to Art`), ...p.activity] } : p;
+    });
+    toast(paths.length === 1 ? 'Added to Art' : `Added ${paths.length} to Art`);
+  }, [toast, updProj]);
+
   // ── Task cards on disk ───────────────────────────────────────────────────────
   /** Mirrors a task to its card in Docs/Tasks, so the repository holds the record. */
   const saveCard = useCallback(async (pid: string, task: Task, change?: string) => {
@@ -1285,7 +1307,7 @@ export function useHub() {
     send, ask, dispatch, attachFiles, removeAttachment, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
-    addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief, syncCards,
+    addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief, syncCards, addArtImages,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,

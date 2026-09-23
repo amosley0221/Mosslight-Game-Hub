@@ -7,6 +7,7 @@ import { attachmentBytes } from '../core/attachments';
 import { fmtSize } from '../core/util';
 import { deviceId } from '../sync/device';
 import { Glyph, RichText, Typing } from './common';
+import { useImageSrc } from '../sync/images';
 
 type AgentMsg = Extract<Message, { type: 'agent' }>;
 type HandoffMsg = Extract<Message, { type: 'handoff' }>;
@@ -108,6 +109,36 @@ function RunProgress({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; 
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4, paddingLeft: 8, borderLeft: '2px solid var(--line-2)' }}>
           {steps.map((s, i) => <span key={i} className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', wordBreak: 'break-word' }}>{s}</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunShot({ src, onCover }: { src: string; onCover?: () => void }) {
+  const url = useImageSrc(src);
+  return (
+    <div style={{ position: 'relative', width: 104, height: 104, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line-2)', background: 'var(--well)' }} title={src}>
+      {url && <img src={url} alt="" onClick={() => window.open(url, '_blank')} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }} />}
+      {onCover && <button onClick={onCover} title="Use as the project cover" style={{ position: 'absolute', bottom: 4, right: 4, border: 0, borderRadius: 6, padding: '2px 6px', fontSize: 10, fontWeight: 600, background: 'var(--chip-bg)', color: 'var(--chip-text)' }}>cover</button>}
+    </div>
+  );
+}
+
+/** Pictures a run produced — generated art, or screenshots it captured — with somewhere to put them. */
+function RunImages({ hub, m }: { hub: Hub; m: AgentMsg }) {
+  const pid = hub.proj?.id;
+  const imgs = m.images || [];
+  if (!imgs.length) return null;
+  return (
+    <div style={{ margin: '8px 0 4px' }}>
+      <div className="row wrap" style={{ gap: 8 }}>
+        {imgs.map(src => <RunShot key={src} src={src} onCover={pid ? () => hub.setCoverFrom(pid, src) : undefined} />)}
+      </div>
+      {pid && (
+        <div className="row wrap" style={{ gap: 8, marginTop: 6 }}>
+          <button className="link" style={{ fontSize: 11 }} onClick={() => hub.addArtImages(pid, imgs, AGENTS[m.agent].name)}>Add to Art</button>
+          <button className="link" style={{ fontSize: 11 }} onClick={() => hub.patchUi({ tab: 'art', view: 'project', pid })}>Open Art →</button>
         </div>
       )}
     </div>
@@ -222,6 +253,7 @@ export function MessageView({ hub, chatKey, m, compact }: { hub: Hub; chatKey: s
           )}
           <RunProgress hub={hub} chatKey={chatKey} m={m} compact={compact} />
           {m.text && <RichText text={m.text} style={{ fontSize: fs, lineHeight: 1.55, color: m.error ? 'var(--danger)' : 'var(--text-2)', wordBreak: 'break-word' }} />}
+          <RunImages hub={hub} m={m} />
         </div>
       </div>
     );

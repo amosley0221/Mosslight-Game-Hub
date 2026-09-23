@@ -184,6 +184,8 @@ export type Message = { ts?: number; u?: number } & (
       runId?: string;
       runDevice?: string;
       stopped?: boolean;
+      /** Pictures this run produced: generated art, or screenshots it captured. */
+      images?: string[];
       /** Cut short because Mosslight closed, rather than by you — offers Resume. */
       interrupted?: boolean;
     }
