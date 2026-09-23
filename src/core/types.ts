@@ -58,6 +58,21 @@ export interface Project {
   u?: number;
 }
 
+export interface Attachment {
+  id: string;
+  name: string;
+  kind: 'image' | 'audio' | 'archive' | 'text' | 'pdf' | 'other';
+  size: number;
+  mime?: string;
+  /** Absolute path on `device` — what local agents open. */
+  path?: string;
+  device?: string;
+  /** img: reference in sync, so other devices can see it. */
+  ref?: string;
+  /** Small preview for the chat bubble (images only). */
+  thumb?: string;
+}
+
 export interface StoryEntry {
   id: string;
   name: string;
@@ -148,7 +163,7 @@ export interface Asset {
 export interface PlanStep { agent: AgentId; title: string; prompt: string; after: number[]; status?: 'waiting' | 'running' | 'done' | 'failed' | 'skipped'; messageId?: string }
 
 export type Message = { ts?: number; u?: number } & (
-  | { id: string; type: 'user'; text: string }
+  | { id: string; type: 'user'; text: string; attachments?: Attachment[] }
   | {
       id: string; type: 'agent'; agent: AgentId; text: string; pending: boolean; route: string; userText?: string; showOverride?: boolean; error?: boolean;
       /** Waiting for this agent to finish an earlier request. */

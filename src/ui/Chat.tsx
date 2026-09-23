@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { AGENTS, ORDER } from '../core/constants';
 import { route } from '../core/router';
 import type { Hub } from '../core/store';
-import type { AgentId, Message, PlanStep } from '../core/types';
+import type { AgentId, Attachment, Message, PlanStep } from '../core/types';
+import { attachmentBytes } from '../core/attachments';
+import { fmtSize } from '../core/util';
 import { deviceId } from '../sync/device';
 import { Glyph, RichText, Typing } from './common';
 
@@ -20,6 +22,41 @@ function Elapsed({ since }: { since: number }) {
   const [, tick] = useState(0);
   useEffect(() => { const t = window.setInterval(() => tick(n => n + 1), 1000); return () => window.clearInterval(t); }, []);
   return <>{fmtDuration(Date.now() - since)}</>;
+}
+
+const ATT_ICON: Record<Attachment['kind'], string> = { image: '🖼', audio: '🎵', archive: '🗜', pdf: '📕', text: '📄', other: '📎' };
+
+/** Opens an attachment in a new tab — it works the same whether it came from disk or sync. */
+async function openAttachment(a: Attachment) {
+  const b = await attachmentBytes(a);
+  if (!b) return;
+  const url = URL.createObjectURL(new Blob([b.bytes as BlobPart], { type: b.mime }));
+  window.open(url, '_blank');
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** One attached file: a thumbnail for images, a labelled chip for everything else. */
+function AttachChip({ a, onRemove }: { a: Attachment; onRemove?: () => void }) {
+  const box = { position: 'relative' as const, border: '1px solid var(--line-2)', borderRadius: 10, background: 'var(--panel)', overflow: 'hidden' };
+  const x = onRemove && (
+    <button onClick={e => { e.stopPropagation(); onRemove(); }} title="Remove" style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: 999, border: 0, background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 11, lineHeight: '18px', padding: 0 }}>×</button>
+  );
+  if (a.kind === 'image' && a.thumb)
+    return <div style={{ ...box, width: 72, height: 72 }} title={a.name} onClick={() => void openAttachment(a)}><img src={a.thumb} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }} />{x}</div>;
+  return (
+    <div className="row" style={{ ...box, gap: 7, padding: '7px 22px 7px 9px', maxWidth: 200, cursor: 'pointer' }} title={a.name} onClick={() => void openAttachment(a)}>
+      <span style={{ fontSize: 14 }}>{ATT_ICON[a.kind]}</span>
+      <span style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+        <div style={{ fontSize: 10, color: 'var(--muted)' }}>{fmtSize(a.size)}</div>
+      </span>
+      {x}
+    </div>
+  );
+}
+
+function AttachmentList({ list, onRemove }: { list: Attachment[]; onRemove?: (id: string) => void }) {
+  return <div className="row wrap" style={{ gap: 6 }}>{list.map(a => <AttachChip key={a.id} a={a} onRemove={onRemove && (() => onRemove(a.id))} />)}</div>;
 }
 
 const pillBtn = (color: string, filled: boolean, compact?: boolean) => ({
@@ -151,7 +188,14 @@ function PlanCard({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; m: 
 export function MessageView({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; m: Message; compact?: boolean }) {
   const fs = compact ? 12 : 13;
   if (m.type === 'user')
-    return <div style={{ display: 'flex', justifyContent: 'flex-end' }}><div style={{ maxWidth: compact ? '86%' : '88%', background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: '14px 14px 4px 14px', padding: compact ? '9px 11px' : '10px 12px', fontSize: fs, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div></div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ maxWidth: compact ? '86%' : '88%', display: 'grid', gap: 6, justifyItems: 'end' }}>
+          {!!m.attachments?.length && <AttachmentList list={m.attachments} />}
+          <div style={{ background: 'var(--accent)', color: 'var(--on-accent)', borderRadius: '14px 14px 4px 14px', padding: compact ? '9px 11px' : '10px 12px', fontSize: fs, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
+        </div>
+      </div>
+    );
   if (m.type === 'agent') {
     const a = AGENTS[m.agent];
     return (
@@ -210,8 +254,16 @@ export function Composer({ hub, compact }: { hub: Hub; compact?: boolean }) {
     : !ui.input.trim() ? (forcedAgent ? 'manual → ' + AGENTS[forcedAgent].name : 'auto-route')
     : preview.agent ? '→ ' + AGENTS[preview.agent].name + (preview.hit && preview.hit !== 'manual' ? ` · "${preview.hit}"` : '') : '→ will ask you';
   const picks: (AgentId | 'team' | null)[] = [null, 'team', ...ORDER];
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
+  const canSend = !!ui.input.trim() || !!ui.attachments.length;
+  const take = (fl: FileList | null) => { const f = Array.from(fl || []); if (f.length) void hub.attachFiles(f); };
   return (
-    <div>
+    <div
+      onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
+      onDragLeave={() => setOver(false)}
+      onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); setOver(false); take(e.dataTransfer.files); } }}
+    >
       <div className="row wrap" style={{ gap: 6, marginBottom: 8 }}>
         {picks.map(a => {
           const on = ui.forced === a;
@@ -220,9 +272,17 @@ export function Composer({ hub, compact }: { hub: Hub; compact?: boolean }) {
         })}
         <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, color: preview.agent ? AGENTS[preview.agent].color : 'var(--muted)' }}>{label}</span>
       </div>
-      <div className="row" style={{ alignItems: 'flex-end', background: 'var(--panel)', border: '1px solid var(--line-3)', borderRadius: compact ? 14 : 12, padding: compact ? '6px 6px 6px 12px' : '8px 8px 8px 12px' }}>
-        <textarea value={ui.input} onChange={e => patchUi({ input: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); hub.send(); } }} rows={compact ? 1 : 2} placeholder={team ? 'Describe the feature — the team splits it up…' : compact ? 'Ask any agent…' : 'Describe what you need — ideas, art, builds, or code…'} style={{ flex: 1, background: 'none', border: 0, resize: 'none', fontSize: 13, lineHeight: 1.5, padding: compact ? '8px 0' : '4px 0' }} />
-        <button onClick={hub.send} disabled={!ui.input.trim()} title={ui.busy ? 'Agents are working — new messages queue per agent' : 'Send'} style={{ background: 'var(--accent)', border: 0, color: 'var(--on-accent)', borderRadius: compact ? 10 : 8, width: compact ? 36 : 34, height: compact ? 36 : 34, fontWeight: 700, fontSize: 15, opacity: ui.input.trim() ? 1 : 0.4, flex: 'none' }}>↑</button>
+      {(!!ui.attachments.length || ui.attaching) && (
+        <div style={{ marginBottom: 8 }}>
+          <AttachmentList list={ui.attachments} onRemove={hub.removeAttachment} />
+          {ui.attaching && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{ui.attaching}</div>}
+        </div>
+      )}
+      <div className="row" style={{ alignItems: 'flex-end', background: 'var(--panel)', border: `1px solid ${over ? 'var(--accent)' : 'var(--line-3)'}`, borderRadius: compact ? 14 : 12, padding: compact ? '6px 6px 6px 8px' : '8px 8px 8px 8px' }}>
+        <input ref={fileInput} type="file" multiple onChange={e => { take(e.target.files); e.target.value = ''; }} style={{ display: 'none' }} />
+        <button onClick={() => fileInput.current?.click()} title="Attach files — screenshots, mp3s, zips, PDFs" style={{ background: 'none', border: 0, color: 'var(--muted)', fontSize: 16, width: compact ? 34 : 30, height: compact ? 36 : 32, flex: 'none' }}>📎</button>
+        <textarea value={ui.input} onChange={e => patchUi({ input: e.target.value })} onPaste={e => { const f = Array.from(e.clipboardData.files); if (f.length) { e.preventDefault(); void hub.attachFiles(f); } }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); hub.send(); } }} rows={compact ? 1 : 2} placeholder={over ? 'Drop files to attach…' : team ? 'Describe the feature — the team splits it up…' : compact ? 'Ask any agent…' : 'Describe what you need — ideas, art, builds, or code…'} style={{ flex: 1, background: 'none', border: 0, resize: 'none', fontSize: 13, lineHeight: 1.5, padding: compact ? '8px 0' : '4px 0' }} />
+        <button onClick={hub.send} disabled={!canSend} title={ui.busy ? 'Agents are working — new messages queue per agent' : 'Send'} style={{ background: 'var(--accent)', border: 0, color: 'var(--on-accent)', borderRadius: compact ? 10 : 8, width: compact ? 36 : 34, height: compact ? 36 : 34, fontWeight: 700, fontSize: 15, opacity: canSend ? 1 : 0.4, flex: 'none' }}>↑</button>
       </div>
     </div>
   );

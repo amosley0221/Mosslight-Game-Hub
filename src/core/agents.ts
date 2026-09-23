@@ -1,11 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AGENTS, engineName } from './constants';
 import { parsePlan, parseReply } from './router';
-import type { AgentId, AgentResult, PlanStep, Project, Settings } from './types';
+import type { AgentId, AgentResult, Attachment, PlanStep, Project, Settings } from './types';
 import { detectTools, getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgentCliStream, saveBytes } from '../platform';
 import { localFolder } from '../sync/device';
 import { uploadImage } from '../sync/images';
 import { repoContext } from '../github/context';
+import { claudeBlocks, describeAttachments, openAiBlocks } from './attachments';
 
 /** `offline`: the agent isn't configured on this device, so nothing was sent or counted. */
 export type Reply = AgentResult & { tokens: number; offline?: boolean; via?: string; stopped?: boolean };
@@ -20,6 +21,8 @@ export interface RunIO {
   onVia?: (via: string) => void;
   signal?: AbortSignal;
   runId?: string;
+  /** Files the user attached to the message. */
+  files?: Attachment[];
 }
 
 /** API key names stored in the keychain, per agent. */
@@ -104,9 +107,11 @@ Do not modify any files. Reply with ONLY this JSON, no prose:
 
 // ── API connectors (stream when the platform allows it) ───────────────────────
 
-async function callClaudeApi(key: string, model: string, system: string, text: string, io: RunIO) {
+async function callClaudeApi(key: string, model: string, system: string, text: string, io: RunIO, files: Attachment[] = []) {
   const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, fetch: httpFetch });
-  const stream = client.messages.stream({ model, max_tokens: 16000, system, messages: [{ role: 'user', content: text }] }, { signal: io.signal });
+  const blocks = await claudeBlocks(files);
+  const content = blocks.length ? ([...blocks, { type: 'text', text }] as Anthropic.ContentBlockParam[]) : text;
+  const stream = client.messages.stream({ model, max_tokens: 16000, system, messages: [{ role: 'user', content }] }, { signal: io.signal });
   stream.on('text', (_delta, snapshot) => io.onText?.(snapshot));
   const res = await stream.finalMessage();
   const tokens = res.usage.input_tokens + res.usage.output_tokens;
@@ -115,12 +120,14 @@ async function callClaudeApi(key: string, model: string, system: string, text: s
 }
 
 /** OpenAI-style chat completions with server-sent events. */
-async function callOpenAiCompatible(url: string, key: string, model: string, system: string, text: string, io: RunIO, usageOption: boolean) {
+async function callOpenAiCompatible(url: string, key: string, model: string, system: string, text: string, io: RunIO, usageOption: boolean, files: Attachment[] = []) {
+  const imgs = await openAiBlocks(files);
+  const userContent = imgs.length ? [{ type: 'text', text }, ...imgs] : text;
   const r = await httpFetch(url, {
     method: 'POST',
     signal: io.signal,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, stream: true, ...(usageOption ? { stream_options: { include_usage: true } } : {}), messages: [{ role: 'system', content: system }, { role: 'user', content: text }] }),
+    body: JSON.stringify({ model, stream: true, ...(usageOption ? { stream_options: { include_usage: true } } : {}), messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }] }),
   });
   if (!r.ok) {
     const data = await r.json().catch(() => ({}));
@@ -322,9 +329,10 @@ export async function listModels(agent: AgentId): Promise<string[]> {
 // ── Entry points ───────────────────────────────────────────────────────────────
 
 function callApi(agent: AgentId, key: string, model: string, system: string, text: string, io: RunIO) {
-  if (agent === 'claude') return callClaudeApi(key, model, system, text, io);
-  if (agent === 'codex') return callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text, io, true);
-  return callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text, io, false);
+  const files = io.files || [];
+  if (agent === 'claude') return callClaudeApi(key, model, system, text, io, files);
+  if (agent === 'codex') return callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text, io, true, files);
+  return callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text, io, false, files);
 }
 
 type Raw = { text: string; tokens: number; via: string; stopped?: boolean; note?: string };
@@ -344,6 +352,10 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
   // Agents that can't see the project folder get the linked GitHub repo's files instead.
   const ctx = proj?.repo ? await repoContext(proj.repo, text) : '';
   const withRepo = (s: string) => (ctx ? `${s}\n\n${ctx}` : s);
+  // Attached files: a listing (with on-disk paths) for every route; images and PDFs also
+  // go to the APIs as real blocks, which callApi handles.
+  const desc = io.files?.length ? await describeAttachments(io.files) : '';
+  const body = desc ? `${text}\n\n${desc}` : text;
 
   let note = '';
   if (mode === 'local' || (mode === 'auto' && (await localClis())[agent as 'claude' | 'codex'])) {
@@ -352,8 +364,8 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
     try {
       io.onVia?.('local');
       const r = agent === 'claude'
-        ? await callClaudeCli(sys, text, cwd, lm, !!settings.localCommands, io)
-        : await callCodexCli(sys, text, cwd, lm, io);
+        ? await callClaudeCli(sys, body, cwd, lm, !!settings.localCommands, io)
+        : await callCodexCli(sys, body, cwd, lm, io);
       return { ...r, via: 'local' };
     } catch (e) {
       if (mode === 'local' || !key || io.signal?.aborted) throw e;
@@ -364,7 +376,7 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
   // (Local mode has already returned or thrown above.)
   if (key) {
     io.onVia?.('api');
-    const r = await callApi(agent, key, settings.models[agent], withRepo(systemFor(false)), text, io);
+    const r = await callApi(agent, key, settings.models[agent], withRepo(systemFor(false)), body, io);
     return { ...r, via: 'api', note };
   }
   return null;

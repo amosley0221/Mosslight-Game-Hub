@@ -3,6 +3,16 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.9.0] - 2026-09-23
+
+### Added
+- **Attach files to any chat message.** A 📎 button in the composer, drag-and-drop onto the chat, or paste straight from the clipboard — screenshots, mp3s, zips, PDFs, text and code files. Up to 12 files per message.
+  - **Screenshots and PDFs go to the agent as real images**, so Codex, Claude and Grok can see what you see instead of guessing from a description.
+  - **Zips, audio and other files are saved to `Mosslight/Inbox` inside the project folder** and the agent is told the exact path — so Claude Code and Codex CLI can unzip an animation pack or import a track themselves.
+  - **Text and code files are quoted inline** (up to 20k characters) for every agent, including the ones running through an API.
+  - **Attachments sync**, so a screenshot you send from the phone is on the desktop and vice versa. Tap an attachment in the chat to open it.
+  - Images are resized before sending, which keeps token cost down on big screenshots.
+
 ## [0.8.0] - 2026-09-23
 
 ### Added

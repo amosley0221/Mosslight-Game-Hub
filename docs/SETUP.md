@@ -231,6 +231,17 @@ Choose the **Team** pill and describe something larger, for example *"add a fish
 2. You see the plan. Tap a step to read or edit its prompt, or drop a step.
 3. **Run plan**: independent steps run at the same time, dependent ones wait for what they need, and each result is passed to the next agent.
 
+### Sending files to an agent
+Attach files to any message with the **📎** button, by dragging them onto the chat, or by pasting from the clipboard (⌘V / Ctrl+V after a screenshot). Up to 12 files at a time.
+
+| What you attach | What the agent gets |
+| --- | --- |
+| Screenshots, PNG/JPG, PDFs | The actual picture or document — Claude, Codex and Grok look at it |
+| Text and code files | The contents, quoted inline (first 20k characters) |
+| Zips, mp3s, models, anything else | The file saved in `Mosslight/Inbox` in the project folder, with the exact path — a local Claude Code or Codex run can unzip or import it |
+
+Attachments sync, so a screenshot you send from your phone is on the desktop too, and tapping one in the chat opens it. Big images are resized before they're sent, so a 4K screenshot doesn't cost a fortune in tokens.
+
 ### What local agents can do
 In Auto or Local mode on the computer, Claude Code and Codex run **inside the project folder** and can edit files. Claude Code can also run builds and tests if you turn on **Let Claude Code run commands** in Settings. With auto backup on, changes are committed and pushed to GitHub afterwards.
 

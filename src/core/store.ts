@@ -3,7 +3,8 @@ import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from '.
 import { planTeam, respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
-import type { AgentId, AgentMode, Asset, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, StoryEntry, StorySection, Usage } from './types';
+import type { AgentId, AgentMode, Asset, Attachment, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, StoryEntry, StorySection, Usage } from './types';
+import { prepareAttachments } from './attachments';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
   cancelAgentRun, copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
@@ -99,6 +100,10 @@ export interface Ui {
   busy: boolean;
   forced: AgentId | 'team' | null;
   toast: string | null;
+  /** Files staged in the composer; they go out with the next message. */
+  attachments: Attachment[];
+  /** Name of the file currently being prepared, while it's being read. */
+  attaching: string | null;
 }
 
 const BUILD_RE = /\.(lnk|exe|bat|cmd|url|app|command|sh|apk|aab)$/i;
@@ -180,7 +185,7 @@ export function useHub() {
   const [data, setRaw] = useState<HubData>(loadData);
   const setData = useCallback((fn: (d: HubData) => HubData) => setRaw(prev => stamp(prev, fn(prev))), []);
   const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [ui, setUi] = useState<Ui>({ view: 'library', pid: null, tab: 'overview', chatOpen: true, input: '', busy: false, forced: null, toast: null });
+  const [ui, setUi] = useState<Ui>({ view: 'library', pid: null, tab: 'overview', chatOpen: true, input: '', busy: false, forced: null, toast: null, attachments: [], attaching: null });
   const dataRef = useRef(data); dataRef.current = data;
   const settingsRef = useRef(settings); settingsRef.current = settings;
   const uiRef = useRef(ui); uiRef.current = ui;
@@ -248,7 +253,7 @@ export function useHub() {
    * Sends a request to one agent. Shows live progress (streamed text, steps, timer) while it runs,
    * waits in that agent's queue if it's busy, and resolves with the final reply.
    */
-  const dispatch = useCallback((key: string, agent: AgentId, text: string, routeLabel: string): Promise<Reply & { messageId: string }> => {
+  const dispatch = useCallback((key: string, agent: AgentId, text: string, routeLabel: string, files: Attachment[] = []): Promise<Reply & { messageId: string }> => {
     const id = uid();
     const busyAhead = !!queues.current[agent];
     push(key, { id, type: 'agent', agent, text: '', pending: true, queued: busyAhead, route: routeLabel, userText: text });
@@ -279,6 +284,7 @@ export function useHub() {
           onVia: v => { live.via = v; schedule(); },
           signal: ctrl.signal,
           runId,
+          files,
         });
       } catch (e) {
         res = ctrl.signal.aborted
@@ -342,14 +348,14 @@ export function useHub() {
 
   // ── Team mode ────────────────────────────────────────────────────────────────
   /** The team lead drafts a plan (steps per agent); you approve it once, then it runs. */
-  const startTeam = useCallback(async (key: string, text: string) => {
+  const startTeam = useCallback(async (key: string, text: string, files: Attachment[] = []) => {
     const lead = settingsRef.current.teamLead || 'codex';
     const id = uid();
     push(key, { id, type: 'plan', lead, summary: '', steps: [], status: 'drafting', userText: text });
     const proj = dataRef.current.projects.find(p => p.id === key) || null;
     setRunning(1);
     try {
-      const plan = await planTeam(lead, text, proj, settingsRef.current);
+      const plan = await planTeam(lead, text, proj, settingsRef.current, { files });
       if ('error' in plan) updPlan(key, id, () => ({ status: 'failed', error: plan.error }));
       else {
         updPlan(key, id, () => ({ status: 'pending', summary: plan.summary, steps: plan.steps }));
@@ -383,18 +389,40 @@ export function useHub() {
     updPlan(key, planId, () => ({ status: all.every(r => r && !r.error && !r.offline && !r.stopped) ? 'done' : 'failed' }));
   }, [dispatch, updPlan]);
 
-  const sendText = useCallback((key: string, raw: string, forced: AgentId | 'team' | null) => {
-    const text = raw.trim();
+  const sendText = useCallback((key: string, raw: string, forced: AgentId | 'team' | null, files: Attachment[] = []) => {
+    const text = raw.trim() || (files.length ? `Here ${files.length === 1 ? 'is a file' : 'are some files'} — take a look.` : '');
     if (!text) return;
-    push(key, { id: uid(), type: 'user', text });
-    if (forced === 'team') return void startTeam(key, text);
+    push(key, { id: uid(), type: 'user', text, ...(files.length ? { attachments: files } : {}) });
+    if (forced === 'team') return void startTeam(key, text, files);
     const r = forced ? { agent: forced, hit: 'manual' } : route(text);
     if (!r.agent) return push(key, { id: uid(), type: 'choose', userText: text });
-    void dispatch(key, r.agent, text, r.hit === 'manual' ? 'you picked ' + AGENTS[r.agent].name : `auto-routed · "${r.hit}"`);
+    void dispatch(key, r.agent, text, r.hit === 'manual' ? 'you picked ' + AGENTS[r.agent].name : `auto-routed · "${r.hit}"`, files);
   }, [dispatch, push, startTeam]);
 
+  /** Stages dropped, pasted or picked files on the composer. */
+  const attachFiles = useCallback(async (files: File[]) => {
+    const list = files.filter(f => f.size > 0).slice(0, 12);
+    if (!list.length) return;
+    const u = uiRef.current;
+    const p = u.view === 'project' && u.pid ? dataRef.current.projects.find(x => x.id === u.pid) || null : null;
+    try {
+      const made = await prepareAttachments(list, p, !!engineRef.current, s => patchUi({ attaching: s }));
+      patchUi({ attachments: [...uiRef.current.attachments, ...made] });
+    } catch (e) {
+      toast('Could not attach that: ' + String((e as Error)?.message || e));
+    } finally {
+      patchUi({ attaching: null });
+    }
+  }, [patchUi, toast]);
+
+  const removeAttachment = useCallback((id: string) => patchUi({ attachments: uiRef.current.attachments.filter(a => a.id !== id) }), [patchUi]);
+
   const chatKey = ui.view === 'project' && ui.pid ? ui.pid : 'global';
-  const send = useCallback(() => { const u = uiRef.current; sendText(u.view === 'project' && u.pid ? u.pid : 'global', u.input, u.forced); patchUi({ input: '' }); }, [sendText, patchUi]);
+  const send = useCallback(() => {
+    const u = uiRef.current;
+    sendText(u.view === 'project' && u.pid ? u.pid : 'global', u.input, u.forced, u.attachments);
+    patchUi({ input: '', attachments: [] });
+  }, [sendText, patchUi]);
   const ask = useCallback((text: string, forced: AgentId | null = null) => { const u = uiRef.current; sendText(u.view === 'project' && u.pid ? u.pid : 'global', text, forced ?? u.forced); }, [sendText]);
 
   const reroute = useCallback((key: string, m: Extract<Message, { type: 'agent' }>, to: AgentId) => {
@@ -1000,7 +1028,7 @@ export function useHub() {
   return {
     data, settings, ui, proj, chatKey,
     patchUi, toast, updProj, updSettings, setData,
-    send, ask, dispatch, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
+    send, ask, dispatch, attachFiles, removeAttachment, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
