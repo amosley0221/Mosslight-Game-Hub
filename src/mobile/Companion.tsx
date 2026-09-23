@@ -153,11 +153,12 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
             <button onClick={() => patchUi({ view: 'library', pid: null })} style={{ position: 'absolute', top: 12, left: 12, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 600, minHeight: 32 }}>← Games</button>
           </div>
           <div ref={wide ? scroller : undefined} style={{ padding: wide ? '14px 18px 24px' : '16px 18px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0, overflow: wide ? 'auto' : undefined }}>
-            <div>
+            {/* flex:none throughout: tall tab content must not squeeze the header or the tabs. */}
+            <div style={{ flex: 'none' }}>
               <div style={{ fontSize: wide ? 22 : 24, fontWeight: 600, letterSpacing: '-.02em' }}>{proj.name}</div>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)', lineHeight: 1.45 }}>{proj.tagline}</p>
             </div>
-            <div>
+            <div style={{ flex: 'none' }}>
               <div className="row" style={{ justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}><span>Progress</span><span className="mono">{tileInfo(proj).done}/{proj.tasks.length}</span></div>
               <div className="bar" style={{ height: 6, borderRadius: 3 }}>{tileInfo(proj).shares.map(s => <div key={s.a} style={{ height: '100%', width: s.pct, background: AGENTS[s.a].color }} />)}</div>
             </div>
