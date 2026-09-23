@@ -75,6 +75,9 @@ function SectionView({ hub, p, s }: { hub: Hub; p: Project; s: StorySection }) {
         <input value={title} onChange={e => setTitle(e.target.value)} onBlur={() => title.trim() && title !== s.title && hub.renameSection(p.id, s.id, title.trim())} style={{ background: 'none', border: 0, fontSize: 16, fontWeight: 600, padding: 0, minWidth: 0 }} />
         <div className="row wrap" style={{ gap: 6 }}>
           {isDesktop && (
+            <button className="btn-ghost" disabled={busy} onClick={() => void run(() => hub.autoImportEntries(p.id, s.title))}>Build from project</button>
+          )}
+          {isDesktop && (
             <button className="btn-ghost" disabled={busy} title={`Pick a folder that holds one folder per ${s.title.replace(/s$/, '').toLowerCase()}`} onClick={() => void run(async () => {
               const dir = await pickFolder();
               if (dir) await hub.importEntries(p.id, s.title, dir);

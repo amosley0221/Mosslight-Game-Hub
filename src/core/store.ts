@@ -505,6 +505,32 @@ export function useHub() {
     return byName.size;
   }, [toast, updProj]);
 
+  /** Folder names a section is likely kept under, so "Characters" finds Characters/ or Cast/. */
+  const FOLDER_ALIASES: Record<string, string[]> = {
+    characters: ['characters', 'character', 'cast', 'people'],
+    maps: ['maps', 'map', 'levels', 'areas'],
+    locations: ['locations', 'location', 'places', 'areas'],
+    vehicles: ['vehicles', 'vehicle', 'cars'],
+    factions: ['factions', 'faction', 'groups'],
+  };
+
+  /** Imports without asking when the project folder has an obvious home for this section. */
+  const autoImportEntries = useCallback(async (pid: string, title: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const root = p && localFolder(p)?.path;
+    if (!isDesktop || !root) { toast('This project has no folder on this computer'); return 0; }
+    const want = FOLDER_ALIASES[title.toLowerCase()] || [title.toLowerCase()];
+    try {
+      const scan = await scanFolder(root);
+      const hit = scan.entries.find(e => e.is_dir && want.includes(e.name.toLowerCase()));
+      if (!hit) { toast(`No ${title} folder in ${baseName(root)} — use Import from folder… to point at one`); return 0; }
+      return await importEntries(pid, title, await joinPath(root, hit.name));
+    } catch (e) {
+      toast(String((e as Error)?.message || e));
+      return 0;
+    }
+  }, [importEntries, toast]);
+
   /** Fills in the blank bios in a section, from what the project's own files say. */
   const draftEntries = useCallback(async (pid: string, sid: string, agent: AgentId = 'claude') => {
     const p = dataRef.current.projects.find(x => x.id === pid);
@@ -514,11 +540,13 @@ export function useHub() {
     if (!blank.length) { toast('Every entry already has notes'); return; }
     const names = blank.slice(0, 25).map(e => e.name);
     const text = [
-      `Write short bios for these ${sec.title.toLowerCase()} in ${p.name}, from what the project's own documents and art say — do not invent facts that aren't there.`,
+      `Write short bios for these ${sec.title.toLowerCase()} in ${p.name}, from what the project's own files already say — do not invent anything that isn't written down.`,
       names.map(n => `- ${n}`).join('\n'),
       '',
-      'Read the design docs, story files and anything under Docs/ in the project folder first. 40–80 words each, plain prose, present tense. Where the documents say nothing about someone, write one line saying what is known (for example the pictures that exist) and mark the rest unknown.',
-      'Reply with JSON only, no prose around it: {"entries":[{"name":"<exactly as listed>","body":"<bio>"}]}',
+      'Search the whole project first, not just Docs/: look for files whose name contains the name in any spelling (Cal Mercer → cal-mercer, cal_mercer, CalMercer, "Cal Mercer"), including bio, cast and character sheets anywhere in the repository, and grep the design and story documents for each name.',
+      'Where a written bio already exists, condense that one faithfully — keep its facts, names, ages, roles and relationships, and do not contradict it. Where nothing is written, say in one line what is known (for example that reference art exists) and mark the rest unknown.',
+      '40–80 words each, plain prose, present tense, no spoilers beyond what the source says.',
+      'Reply with JSON only, no prose around it: {"entries":[{"name":"<exactly as listed>","body":"<bio>","source":"<file you took it from, or none>"}]}',
     ].join('\n');
     push(pid, { id: uid(), type: 'user', text });
     const res = await dispatch(pid, agent, text, `writing ${sec.title.toLowerCase()} notes`);
@@ -1424,7 +1452,7 @@ export function useHub() {
     addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief, syncCards, addArtImages,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,
     addSection, renameSection, removeSection, addEntry, updEntry, removeEntry, addEntryImages, setArtFolders,
-    draftSummary, importEntries, draftEntries,
+    draftSummary, importEntries, autoImportEntries, draftEntries,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
     busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,

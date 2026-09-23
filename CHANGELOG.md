@@ -3,6 +3,14 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.19.1] - 2026-09-23
+
+### Added
+- **Build from project.** A section named Characters (or Maps, Locations, Vehicles, Factions) finds the matching folder in the project — `Characters/`, `Cast/`, `Levels/` — and builds itself from it, no folder picker. **Import from folder…** is still there for anything kept elsewhere.
+
+### Changed
+- **Bios are taken from what you've already written.** The notes step now searches the whole project for each name in every spelling it might use — `Cal Mercer` → `cal-mercer-bio.md`, `cal_mercer`, `CalMercer` — anywhere in the repository, not just under `Docs/`. An existing bio is condensed faithfully rather than rewritten, and each entry reports the file it came from.
+
 ## [0.19.0] - 2026-09-23
 
 ### Fixed
