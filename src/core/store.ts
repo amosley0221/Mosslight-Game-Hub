@@ -663,7 +663,8 @@ export function useHub() {
       try {
         const bytes = await readFileBytes(await joinPath(root, ...rel.split('/')), 400_000);
         const text = new TextDecoder().decode(bytes).trim();
-        if (text) found.push({ file: rel, text: text.slice(0, BRIEF_PER_FILE) });
+        // Windows paths are case-insensitive, so Docs/ and docs/ are the same file — don't send it twice.
+        if (text && !found.some(f => f.text === text.slice(0, BRIEF_PER_FILE))) found.push({ file: rel, text: text.slice(0, BRIEF_PER_FILE) });
       } catch { /* not in this project */ }
     }
     if (!found.length) {

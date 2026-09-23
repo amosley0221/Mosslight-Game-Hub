@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.12.1] - 2026-09-23
+
+### Fixed
+- **The project instructions card could list the same file twice** (`Docs/PROJECT-HANDOFF.md + Docs/PROJECT-HANDOFF.md`), because Windows treats `Docs/` and `docs/` as the same path — which also sent the file to the agents twice and wasted their context budget.
+
 ## [0.12.0] - 2026-09-23
 
 ### Added
