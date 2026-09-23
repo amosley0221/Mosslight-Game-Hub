@@ -125,7 +125,8 @@ function EngineSlot() {
     return () => window.clearInterval(t);
   }, []);
   setEngineProcs(list || []);
-  if (!isDesktop || !list?.length) return null;
+  // Shown even when nothing is running: "the slot is free" is the answer people come here for.
+  if (!isDesktop) return null;
   const end = async (p: EngineProc) => {
     if (!window.confirm(`End ${p.name} (PID ${p.pid})?\n\n${p.window ? `Window: ${p.window}` : 'It has no window — usually a session that never shut down.'}\n\nAnything unsaved in it is lost.`)) return;
     setBusy(p.pid);
@@ -136,11 +137,16 @@ function EngineSlot() {
   return (
     <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-        <h3 className="eyebrow">Engine &amp; GPU · {list.length} running</h3>
+        <h3 className="eyebrow">Engine &amp; GPU{list?.length ? ` · ${list.length} running` : ''}</h3>
         <button className="link" onClick={load}>Refresh</button>
       </div>
+      {!list?.length && (
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>
+          {list ? 'Nothing running — the GPU is free, so an engine capture can start.' : 'Looking…'} Unreal, Unity, Godot and Blender show here while they run, and a session that outlives its window is called out so it can be ended.
+        </p>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {list.map(p => (
+        {(list || []).map(p => (
           <div key={p.pid} className="row wrap" style={{ gap: 10, alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '9px 12px' }}>
             <span style={{ minWidth: 0, flex: 1 }}>
               <span className="row" style={{ gap: 8 }}>

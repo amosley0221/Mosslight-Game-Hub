@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.24.1] - 2026-09-23
+
+### Fixed
+- **The Engine & GPU card vanished when nothing was running**, so "the slot is free" and "the feature isn't there" looked the same. It now always shows on a project, saying plainly that nothing is running and a capture can start.
 ## [0.24.0] - 2026-09-23
 
 ### Added
