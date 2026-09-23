@@ -321,6 +321,105 @@ async fn run_agent_cli(program: String, args: Vec<String>, stdin: String, cwd: O
     .map_err(|e| e.to_string())?
 }
 
+/// Running local agent processes by run id, so the UI can stop them.
+fn runs() -> &'static std::sync::Mutex<HashMap<String, u32>> {
+    static RUNS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, u32>>> = std::sync::OnceLock::new();
+    RUNS.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+fn cancelled() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+#[derive(Serialize)]
+struct StreamResult {
+    ok: bool,
+    code: i32,
+    stdout: String,
+    stderr: String,
+    cancelled: bool,
+}
+
+/// Like run_agent_cli, but sends every stdout line to the UI as it arrives (live progress).
+#[tauri::command]
+async fn run_agent_cli_stream(
+    program: String,
+    args: Vec<String>,
+    stdin: String,
+    cwd: Option<String>,
+    run_id: String,
+    on_line: tauri::ipc::Channel<String>,
+) -> Result<StreamResult, String> {
+    if program != "claude" && program != "codex" {
+        return Err("Only the claude and codex CLIs can be run".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let exe = find_tool(&program).ok_or(format!("{program} CLI not found on PATH"))?;
+        let mut cmd = command(&exe);
+        cmd.args(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        if let Some(dir) = cwd.filter(|d| Path::new(d).is_dir()) {
+            cmd.current_dir(dir);
+        }
+        let mut child = cmd.spawn().map_err(|e| format!("Couldn't start {program}: {e}"))?;
+        runs().lock().unwrap().insert(run_id.clone(), child.id());
+        if let Some(mut s) = child.stdin.take() {
+            let _ = s.write_all(stdin.as_bytes());
+        }
+        let mut err_pipe = child.stderr.take();
+        let err_thread = std::thread::spawn(move || {
+            let mut s = String::new();
+            if let Some(e) = err_pipe.as_mut() {
+                let _ = e.read_to_string(&mut s);
+            }
+            s
+        });
+        let mut all = String::new();
+        if let Some(out) = child.stdout.take() {
+            for line in BufReader::new(out).lines().map_while(Result::ok) {
+                all.push_str(&line);
+                all.push('\n');
+                let _ = on_line.send(line);
+            }
+        }
+        let status = child.wait().map_err(|e| e.to_string())?;
+        runs().lock().unwrap().remove(&run_id);
+        let was_cancelled = cancelled().lock().unwrap().remove(&run_id);
+        Ok(StreamResult {
+            ok: status.success(),
+            code: status.code().unwrap_or(-1),
+            stdout: all,
+            stderr: err_thread.join().unwrap_or_default(),
+            cancelled: was_cancelled,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Stops a running local agent (and anything it started).
+#[tauri::command]
+fn cancel_agent_run(run_id: String) -> bool {
+    let Some(pid) = runs().lock().unwrap().get(&run_id).copied() else { return false };
+    cancelled().lock().unwrap().insert(run_id);
+    let pid = pid.to_string();
+    let mut kill = if cfg!(windows) {
+        let mut c = Command::new("taskkill");
+        c.args(["/PID", &pid, "/T", "/F"]);
+        c
+    } else {
+        let mut c = Command::new("kill");
+        c.args(["-TERM", &pid]);
+        c
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        kill.creation_flags(0x0800_0000);
+    }
+    kill.status().map(|s| s.success()).unwrap_or(false)
+}
+
 #[derive(Serialize)]
 struct GitOutput {
     ok: bool,
@@ -395,6 +494,8 @@ pub fn run_app() {
             adb_install,
             run_agent_cli,
             run_git,
+            run_agent_cli_stream,
+            cancel_agent_run,
             write_text_if_missing
         ])
         .run(tauri::generate_context!())

@@ -1,5 +1,5 @@
 import { KW, ORDER } from './constants';
-import type { AgentId, AgentResult, BuildKind, Platform } from './types';
+import type { AgentId, AgentResult, BuildKind, PlanStep, Platform } from './types';
 
 /** Score a message against each agent's keywords. Ties or zero → null (ask the user). */
 export function route(text: string): { agent: AgentId | null; hit?: string } {
@@ -29,7 +29,9 @@ const AGENT_RE = /^(grok|codex|claude)$/i;
  */
 export function parseReply(raw: string, agent: AgentId, short: string): AgentResult {
   const res: AgentResult = { text: '', tasks: [] };
-  const body = String(raw);
+  // A handoff can carry a ready-to-run prompt for the teammate: <<<PROMPT … PROMPT>>>
+  let handoffPrompt: string | undefined;
+  const body = String(raw).replace(/<<<PROMPT\s*\n?([\s\S]*?)\n?\s*PROMPT>>>/, (_m, p: string) => { handoffPrompt = p.trim(); return ''; });
   const fences = [...body.matchAll(/```([\w+#.-]*)[^\n]*\n([\s\S]*?)```/g)];
   if (fences.length) {
     res.code = fences.map((f, i) => {
@@ -51,5 +53,29 @@ export function parseReply(raw: string, agent: AgentId, short: string): AgentRes
     else keep.push(ln);
   }
   res.text = keep.join('\n').trim();
+  if (res.handoff && handoffPrompt) res.handoff.prompt = handoffPrompt;
   return res;
+}
+
+/** Extracts a Team plan ({ summary, steps: [{ agent, title, prompt, after }] }) from a reply. */
+export function parsePlan(raw: string): { summary: string; steps: PlanStep[] } | null {
+  const s = String(raw);
+  const start = s.indexOf('{'), end = s.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const j = JSON.parse(s.slice(start, end + 1));
+    const steps: PlanStep[] = (Array.isArray(j.steps) ? j.steps : [])
+      .filter((x: { agent?: string; prompt?: string }) => x && AGENT_RE.test(String(x.agent)) && x.prompt)
+      .slice(0, 6)
+      .map((x: { agent: string; title?: string; prompt: string; after?: unknown }, i: number) => ({
+        agent: x.agent.toLowerCase() as AgentId,
+        title: String(x.title || x.prompt).slice(0, 80),
+        prompt: String(x.prompt),
+        after: (Array.isArray(x.after) ? x.after : []).map(Number).filter((n: number) => Number.isInteger(n) && n >= 0 && n < i),
+        status: 'waiting' as const,
+      }));
+    return steps.length ? { summary: String(j.summary || ''), steps } : null;
+  } catch {
+    return null;
+  }
 }

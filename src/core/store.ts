@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from './constants';
-import { respond, type Reply } from './agents';
+import { planTeam, respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
-import type { AgentId, AgentMode, Asset, Build, HubData, Message, Platform, Project, Settings, Usage } from './types';
+import type { AgentId, AgentMode, Asset, Build, HubData, Message, PlanStep, Platform, Project, Settings, Usage } from './types';
 import { A, T, baseName, fmtSize, now, uid, uniq } from './util';
 import {
-  copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
+  cancelAgentRun, copyFile, getDesktopDir, homePath, pickParentFolder, writeTextIfMissing, imageDir, isDesktop, joinPath, launchPath, libraryRoot, openExternal,
   pickFolder, platform, readFileBytes, removeFile, saveBytes, scanFolder, type ScanResult,
 } from '../platform';
 import { OS_LABEL, deviceId, deviceOs, localFolder } from '../sync/device';
@@ -97,7 +97,7 @@ export interface Ui {
   chatOpen: boolean;
   input: string;
   busy: boolean;
-  forced: AgentId | null;
+  forced: AgentId | 'team' | null;
   toast: string | null;
 }
 
@@ -204,23 +204,24 @@ export function useHub() {
   const push = useCallback((key: string, m: Message) => setData(d => ({ ...d, messages: { ...d.messages, [key]: [...(d.messages[key] || []), m] } })), []);
   const updMsg = useCallback((key: string, id: string, fn: (m: Message) => Message) => setData(d => ({ ...d, messages: { ...d.messages, [key]: (d.messages[key] || []).map(m => (m.id === id ? fn({ ...m } as Message) : m)) } })), []);
   const dropMsg = useCallback((key: string, id: string) => setData(d => ({ ...d, messages: { ...d.messages, [key]: (d.messages[key] || []).filter(m => m.id !== id) } })), []);
+  type AgentMsg = Extract<Message, { type: 'agent' }>;
+  type PlanMsg = Extract<Message, { type: 'plan' }>;
+  const updAgentMsg = useCallback((key: string, id: string, patch: Partial<AgentMsg> | ((m: AgentMsg) => Partial<AgentMsg>)) => updMsg(key, id, m => ({ ...m, ...(typeof patch === 'function' ? patch(m as AgentMsg) : patch) } as Message)), [updMsg]);
+  const updPlan = useCallback((key: string, id: string, fn: (m: PlanMsg) => Partial<PlanMsg>) => updMsg(key, id, m => ({ ...m, ...fn(m as PlanMsg) } as Message)), [updMsg]);
 
-  const dispatch = useCallback(async (key: string, agent: AgentId, text: string, routeLabel: string) => {
-    const id = uid();
-    push(key, { id, type: 'agent', agent, text: '', pending: true, route: routeLabel, userText: text });
-    patchUi({ busy: true });
+  // Each agent works through its own queue, so different agents run at the same time.
+  const queues = useRef<Partial<Record<AgentId, Promise<unknown>>>>({});
+  const running = useRef(0);
+  const liveRuns = useRef(new Map<string, { ctrl: AbortController; runId: string }>());
+  const skipped = useRef(new Set<string>());
+  const setRunning = (delta: number) => { running.current += delta; patchUi({ busy: running.current > 0 }); };
+
+  /** Applies a finished reply's side effects (tasks, art, builds, code, usage) to the project. */
+  const applyReply = useCallback((key: string, agent: AgentId, text: string, res: Reply) => {
     const proj = dataRef.current.projects.find(p => p.id === key) || null;
-    let res: Reply;
-    try {
-      res = await respond(agent, text, proj, settingsRef.current);
-    } catch (e) {
-      res = { text: 'Something went wrong: ' + ((e as Error)?.message || String(e)), tokens: 0, error: true };
-    }
-    patchUi({ busy: false });
     setData(d => {
-      const messages = { ...d.messages, [key]: (d.messages[key] || []).map(m => (m.id === id ? { ...m, text: res.text, pending: false, error: res.error || res.offline, route: res.via ? (m as { route?: string }).route + ' · ' + res.via : (m as { route?: string }).route } as Message : m)) };
       const mine = { ...ZERO, ...(d.usageBy[deviceId] || {}) };
-      const usageBy = res.offline ? d.usageBy : { ...d.usageBy, [deviceId]: { ...mine, [agent]: { calls: mine[agent].calls + 1, tokens: mine[agent].tokens + res.tokens } } };
+      const usageBy = res.offline || !res.tokens ? d.usageBy : { ...d.usageBy, [deviceId]: { ...mine, [agent]: { calls: mine[agent].calls + 1, tokens: mine[agent].tokens + res.tokens } } };
       const projects = !proj || res.offline ? d.projects : d.projects.map(p => {
         if (p.id !== proj.id) return p;
         const q = { ...p };
@@ -232,15 +233,99 @@ export function useHub() {
         }
         if (res.code?.length) { q.code = [...res.code.map(k => ({ id: uid(), agent, title: k.title, file: k.file || '', lang: k.lang || '', code: k.code, ts: now() })), ...q.code]; q.activity = [...res.code.map(k => A(agent, 'Code logged: ' + k.title)), ...q.activity]; }
         if (res.gdd) q.gdd = q.gdd.map(g => (g.title.toLowerCase() === res.gdd!.title.toLowerCase() ? { ...g, body: res.gdd!.body } : g));
-        q.activity = [A(agent, 'Replied to: ' + text.slice(0, 60) + (text.length > 60 ? '…' : '')), ...q.activity];
+        q.activity = [A(agent, `${res.stopped ? 'Stopped' : 'Replied to'}: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`), ...q.activity];
         return q;
       });
-      return { ...d, messages, usageBy, projects };
+      return { ...d, usageBy, projects };
     });
-    if (res.handoff) push(key, { id: uid(), type: 'handoff', from: agent, to: res.handoff.to, reason: res.handoff.reason, status: 'pending', userText: text });
-    // A local agent may have changed files — back them up if the project auto-backs up.
-    if (res.via === 'local' && proj?.repo?.auto) void backupRef.current?.(proj.id, `${AGENTS[agent].name}: ${text.split('\n')[0].slice(0, 60)}`, true);
-  }, [push, patchUi]);
+  }, [setData]);
+
+  const approveRef = useRef<(key: string, m: Extract<Message, { type: 'handoff' }>, prompt?: string, auto?: boolean) => void>();
+
+  /**
+   * Sends a request to one agent. Shows live progress (streamed text, steps, timer) while it runs,
+   * waits in that agent's queue if it's busy, and resolves with the final reply.
+   */
+  const dispatch = useCallback((key: string, agent: AgentId, text: string, routeLabel: string): Promise<Reply & { messageId: string }> => {
+    const id = uid();
+    const busyAhead = !!queues.current[agent];
+    push(key, { id, type: 'agent', agent, text: '', pending: true, queued: busyAhead, route: routeLabel, userText: text });
+
+    const run = async (): Promise<Reply & { messageId: string }> => {
+      if (skipped.current.delete(id)) {
+        updAgentMsg(key, id, { pending: false, queued: false, stopped: true, text: '(cancelled before it started)' });
+        return { text: '', tokens: 0, stopped: true, messageId: id };
+      }
+      const ctrl = new AbortController();
+      const runId = uid() + uid();
+      liveRuns.current.set(id, { ctrl, runId });
+      setRunning(1);
+      updAgentMsg(key, id, { queued: false, startedAt: now(), runId, runDevice: deviceId, steps: [] });
+
+      // Stream updates are batched so a fast token stream doesn't re-render (or sync) on every word.
+      const live = { text: '', steps: [] as string[], via: '' };
+      let timer: number | undefined;
+      const flush = () => { timer = undefined; updAgentMsg(key, id, m => ({ text: live.text, steps: live.steps.slice(-40), route: live.via ? `${routeLabel} · ${live.via}` : m.route })); };
+      const schedule = () => { if (timer === undefined) timer = window.setTimeout(flush, 250); };
+      const proj = dataRef.current.projects.find(p => p.id === key) || null;
+
+      let res: Reply;
+      try {
+        res = await respond(agent, text, proj, settingsRef.current, {
+          onText: t => { live.text = t; schedule(); },
+          onStep: s => { live.steps.push(s); schedule(); },
+          onVia: v => { live.via = v; schedule(); },
+          signal: ctrl.signal,
+          runId,
+        });
+      } catch (e) {
+        res = ctrl.signal.aborted
+          ? { text: live.text || '(stopped)', tokens: 0, stopped: true, via: live.via }
+          : { text: 'Something went wrong: ' + ((e as Error)?.message || String(e)), tokens: 0, error: true, via: live.via };
+      } finally {
+        window.clearTimeout(timer);
+        liveRuns.current.delete(id);
+        setRunning(-1);
+      }
+      updAgentMsg(key, id, {
+        text: res.text, pending: false, finishedAt: now(), stopped: res.stopped, error: res.error || res.offline,
+        steps: live.steps.slice(-40), route: res.via ? `${routeLabel} · ${res.via}` : routeLabel,
+      });
+      applyReply(key, agent, text, res);
+      if (res.handoff && !res.stopped) {
+        const h: Extract<Message, { type: 'handoff' }> = { id: uid(), type: 'handoff', from: agent, to: res.handoff.to, reason: res.handoff.reason, prompt: res.handoff.prompt, status: 'pending', userText: text };
+        push(key, h);
+        if (settingsRef.current.autoHandoff) window.setTimeout(() => approveRef.current?.(key, h, undefined, true), 50);
+      }
+      // A local agent may have changed files — back them up if the project auto-backs up.
+      if (res.via === 'local' && !res.stopped && proj?.repo?.auto) void backupRef.current?.(proj.id, `${AGENTS[agent].name}: ${text.split('\n')[0].slice(0, 60)}`, true);
+      return { ...res, messageId: id };
+    };
+
+    const job = (queues.current[agent] || Promise.resolve()).catch(() => undefined).then(run);
+    const tail = job.finally(() => { if (queues.current[agent] === tail) delete queues.current[agent]; });
+    queues.current[agent] = tail;
+    return job;
+  }, [push, updAgentMsg, applyReply]);
+
+  /** Stops a running (or queued) request started on this device. */
+  const stopRun = useCallback((key: string, m: Extract<Message, { type: 'agent' }>) => {
+    const r = liveRuns.current.get(m.id);
+    if (r) { r.ctrl.abort(); void cancelAgentRun(r.runId); toast(`Stopping ${AGENTS[m.agent].name}…`); return; }
+    if (m.queued) { skipped.current.add(m.id); updAgentMsg(key, m.id, { text: 'Cancelling…' }); }
+  }, [toast, updAgentMsg]);
+
+  // Requests that were running when the app closed can't finish — mark them.
+  useEffect(() => {
+    setData(d => {
+      let changed = false;
+      const messages = Object.fromEntries(Object.entries(d.messages).map(([k, list]) => [k, list.map(m => {
+        if (m.type === 'agent' && m.pending && (!m.runDevice || m.runDevice === deviceId)) { changed = true; return { ...m, pending: false, queued: false, stopped: true, text: (m.text ? m.text + '\n\n' : '') + '(interrupted — Mosslight was closed while this was running)' }; }
+        return m;
+      })]));
+      return changed ? { ...d, messages } : d;
+    });
+  }, [setData]);
 
   /** GDD "Draft with X" writes the agent's reply into that section. */
   const draftSection = useCallback(async (pid: string, sid: string) => {
@@ -249,21 +334,62 @@ export function useHub() {
     if (!p || !s) return;
     const text = `Draft the "${s.title}" section of the GDD for ${p.name}. Keep it under 120 words. Reply with the section text only.`;
     push(pid, { id: uid(), type: 'user', text });
-    const before = (dataRef.current.messages[pid] || []).length;
-    await dispatch(pid, s.agent, text, 'you picked ' + AGENTS[s.agent].name);
-    await new Promise(r => setTimeout(r, 50));
-    const reply = (dataRef.current.messages[pid] || []).slice(before).find(m => m.type === 'agent') as Extract<Message, { type: 'agent' }> | undefined;
-    if (reply && !reply.error && reply.text) updProj(pid, q => ({ ...q, gdd: q.gdd.map(g => (g.id === sid ? { ...g, body: reply.text } : g)) }));
+    const res = await dispatch(pid, s.agent, text, 'you picked ' + AGENTS[s.agent].name);
+    if (!res.error && !res.offline && !res.stopped && res.text) updProj(pid, q => ({ ...q, gdd: q.gdd.map(g => (g.id === sid ? { ...g, body: res.text } : g)) }));
   }, [dispatch, push, updProj]);
 
-  const sendText = useCallback((key: string, raw: string, forced: AgentId | null) => {
+  // ── Team mode ────────────────────────────────────────────────────────────────
+  /** The team lead drafts a plan (steps per agent); you approve it once, then it runs. */
+  const startTeam = useCallback(async (key: string, text: string) => {
+    const lead = settingsRef.current.teamLead || 'codex';
+    const id = uid();
+    push(key, { id, type: 'plan', lead, summary: '', steps: [], status: 'drafting', userText: text });
+    const proj = dataRef.current.projects.find(p => p.id === key) || null;
+    setRunning(1);
+    try {
+      const plan = await planTeam(lead, text, proj, settingsRef.current);
+      if ('error' in plan) updPlan(key, id, () => ({ status: 'failed', error: plan.error }));
+      else {
+        updPlan(key, id, () => ({ status: 'pending', summary: plan.summary, steps: plan.steps }));
+        applyReply(key, lead, text, { text: '', tokens: plan.tokens });
+      }
+    } catch (e) {
+      updPlan(key, id, () => ({ status: 'failed', error: String((e as Error)?.message || e) }));
+    } finally {
+      setRunning(-1);
+    }
+  }, [push, updPlan, applyReply]);
+
+  /** Runs an approved plan: independent steps in parallel, dependent ones after their inputs, passing results along. */
+  const runPlan = useCallback(async (key: string, planId: string, steps: PlanStep[]) => {
+    const n = steps.length;
+    updPlan(key, planId, () => ({ status: 'running', steps: steps.map(s => ({ ...s, status: 'waiting' as const })) }));
+    const setStep = (i: number, patch: Partial<PlanStep>) => updPlan(key, planId, m => ({ steps: m.steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+    const results: Promise<Reply | null>[] = [];
+    steps.forEach((s, i) => {
+      results[i] = Promise.all(s.after.map(j => results[j])).then(async prev => {
+        if (prev.some(r => !r || r.error || r.offline || r.stopped)) { setStep(i, { status: 'skipped' }); return null; }
+        const inputs = s.after.map((j, k) => `--- Result of step ${j + 1} (${AGENTS[steps[j].agent].name}: ${steps[j].title}) ---\n${(prev[k]!.text || '').slice(0, 6000)}`).join('\n\n');
+        setStep(i, { status: 'running' });
+        const job = dispatch(key, s.agent, inputs ? `${s.prompt}\n\n${inputs}` : s.prompt, `team · step ${i + 1}/${n} · ${s.title}`);
+        const res = await job;
+        setStep(i, { status: res.error || res.offline || res.stopped ? 'failed' : 'done', messageId: res.messageId });
+        return res;
+      });
+    });
+    const all = await Promise.all(results);
+    updPlan(key, planId, () => ({ status: all.every(r => r && !r.error && !r.offline && !r.stopped) ? 'done' : 'failed' }));
+  }, [dispatch, updPlan]);
+
+  const sendText = useCallback((key: string, raw: string, forced: AgentId | 'team' | null) => {
     const text = raw.trim();
-    if (!text || uiRef.current.busy) return;
+    if (!text) return;
     push(key, { id: uid(), type: 'user', text });
+    if (forced === 'team') return void startTeam(key, text);
     const r = forced ? { agent: forced, hit: 'manual' } : route(text);
     if (!r.agent) return push(key, { id: uid(), type: 'choose', userText: text });
     void dispatch(key, r.agent, text, r.hit === 'manual' ? 'you picked ' + AGENTS[r.agent].name : `auto-routed · "${r.hit}"`);
-  }, [dispatch, push]);
+  }, [dispatch, push, startTeam]);
 
   const chatKey = ui.view === 'project' && ui.pid ? ui.pid : 'global';
   const send = useCallback(() => { const u = uiRef.current; sendText(u.view === 'project' && u.pid ? u.pid : 'global', u.input, u.forced); patchUi({ input: '' }); }, [sendText, patchUi]);
@@ -273,13 +399,21 @@ export function useHub() {
     updMsg(key, m.id, x => ({ ...x, showOverride: false, route: ((x as typeof m).route || '') + ' · rerouted' } as Message));
     void dispatch(key, to, m.userText || m.text, 'rerouted by you');
   }, [dispatch, updMsg]);
-  const approve = useCallback((key: string, m: Extract<Message, { type: 'handoff' }>) => {
-    updMsg(key, m.id, x => ({ ...x, status: 'approved' } as Message));
-    void dispatch(key, m.to, `[Handoff from ${AGENTS[m.from].name}] ${m.reason}\n\nOriginal request: ${m.userText || ''}`, 'handoff · approved by you');
+
+  /** Approve a handoff: the teammate runs the (optionally edited) prompt the other agent wrote. */
+  const approve = useCallback((key: string, m: Extract<Message, { type: 'handoff' }>, prompt?: string, auto = false) => {
+    const finalPrompt = (prompt ?? m.prompt ?? '').trim();
+    updMsg(key, m.id, x => ({ ...x, status: 'approved', prompt: finalPrompt || (x as typeof m).prompt, auto } as Message));
+    const text = finalPrompt
+      ? `${finalPrompt}\n\n(Handed off from ${AGENTS[m.from].name}: ${m.reason})`
+      : `[Handoff from ${AGENTS[m.from].name}] ${m.reason}\n\nOriginal request: ${m.userText || ''}`;
+    void dispatch(key, m.to, text, auto ? 'handoff · auto-approved' : 'handoff · approved by you');
   }, [dispatch, updMsg]);
+  approveRef.current = approve;
   const decline = useCallback((key: string, m: Message) => updMsg(key, m.id, x => ({ ...x, status: 'declined' } as Message)), [updMsg]);
   const choose = useCallback((key: string, m: Extract<Message, { type: 'choose' }>, a: AgentId) => { dropMsg(key, m.id); void dispatch(key, a, m.userText, 'you picked ' + AGENTS[a].name); }, [dispatch, dropMsg]);
   const toggleOverride = useCallback((key: string, m: Message) => updMsg(key, m.id, x => ({ ...x, showOverride: !(x as { showOverride?: boolean }).showOverride } as Message)), [updMsg]);
+  const declinePlan = useCallback((key: string, id: string) => updPlan(key, id, () => ({ status: 'declined' })), [updPlan]);
 
   // ── Tasks ─────────────────────────────────────────────────────────────────────
   const cycleTask = useCallback((pid: string, tid: string) => updProj(pid, p => {
@@ -730,7 +864,7 @@ export function useHub() {
   return {
     data, settings, ui, proj, chatKey,
     patchUi, toast, updProj, updSettings, setData,
-    send, ask, dispatch, reroute, approve, decline, choose, toggleOverride, draftSection,
+    send, ask, dispatch, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
     cycleTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,

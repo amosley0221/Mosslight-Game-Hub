@@ -74,10 +74,26 @@ export interface Asset {
   u?: number;
 }
 
+/** One step of a Team plan. `after` = indexes of steps whose results this one needs. */
+export interface PlanStep { agent: AgentId; title: string; prompt: string; after: number[]; status?: 'waiting' | 'running' | 'done' | 'failed' | 'skipped'; messageId?: string }
+
 export type Message = { ts?: number; u?: number } & (
   | { id: string; type: 'user'; text: string }
-  | { id: string; type: 'agent'; agent: AgentId; text: string; pending: boolean; route: string; userText?: string; showOverride?: boolean; error?: boolean }
-  | { id: string; type: 'handoff'; from: AgentId; to: AgentId; reason: string; status: 'pending' | 'approved' | 'declined'; userText: string }
+  | {
+      id: string; type: 'agent'; agent: AgentId; text: string; pending: boolean; route: string; userText?: string; showOverride?: boolean; error?: boolean;
+      /** Waiting for this agent to finish an earlier request. */
+      queued?: boolean;
+      startedAt?: number;
+      finishedAt?: number;
+      /** Live activity, e.g. "Reading src/Player.cs", "Running npm run build". */
+      steps?: string[];
+      /** Local run id, so the device running it can stop it. */
+      runId?: string;
+      runDevice?: string;
+      stopped?: boolean;
+    }
+  | { id: string; type: 'handoff'; from: AgentId; to: AgentId; reason: string; status: 'pending' | 'approved' | 'declined'; userText: string; prompt?: string; auto?: boolean }
+  | { id: string; type: 'plan'; lead: AgentId; summary: string; steps: PlanStep[]; status: 'drafting' | 'pending' | 'running' | 'done' | 'declined' | 'failed'; userText: string; error?: string }
   | { id: string; type: 'choose'; userText: string }
 );
 
@@ -94,6 +110,12 @@ export interface Settings {
   models: Record<AgentId, string> & { grokImage: string };
   /** Model passed to the local CLI; empty = the CLI's own default. */
   localModels: Partial<Record<AgentId, string>>;
+  /** Run agent-to-agent handoffs without waiting for Approve. */
+  autoHandoff?: boolean;
+  /** Let local Claude Code run shell commands (builds, tests) without asking. */
+  localCommands?: boolean;
+  /** Agent that plans Team requests. */
+  teamLead?: AgentId;
   device: { name: string; paired: boolean };
   tools: Record<string, boolean>;
   libraryDir?: string;
@@ -119,6 +141,6 @@ export interface AgentResult {
   builds?: { name: string; path: string; kind?: BuildKind; platform?: Platform }[];
   code?: { title: string; file?: string; lang?: string; code: string }[];
   gdd?: { title: string; body: string };
-  handoff?: { to: AgentId; reason: string };
+  handoff?: { to: AgentId; reason: string; prompt?: string };
   error?: boolean;
 }

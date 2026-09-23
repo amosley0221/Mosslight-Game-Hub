@@ -1,4 +1,4 @@
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { Channel, invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { desktopDir, homeDir, join } from '@tauri-apps/api/path';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
@@ -128,3 +128,13 @@ export const pickParentFolder = async (title: string): Promise<string | null> =>
   return typeof r === 'string' ? r : null;
 };
 export const homePath = async (...parts: string[]) => join(await homeDir(), ...parts);
+
+// ── Local agent runs with live output (desktop) ────────────────────────────────
+export interface StreamResult { ok: boolean; code: number; stdout: string; stderr: string; cancelled: boolean }
+/** Runs the claude/codex CLI and calls `onLine` for each stdout line as it arrives. */
+export function runAgentCliStream(program: 'claude' | 'codex', args: string[], stdin: string, cwd: string | undefined, runId: string, onLine: (line: string) => void) {
+  const ch = new Channel<string>();
+  ch.onmessage = onLine;
+  return invoke<StreamResult>('run_agent_cli_stream', { program, args, stdin, cwd: cwd || null, runId, onLine: ch });
+}
+export const cancelAgentRun = (runId: string) => (isTauri ? invoke<boolean>('cancel_agent_run', { runId }) : Promise.resolve(false));

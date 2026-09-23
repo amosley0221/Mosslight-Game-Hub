@@ -1,14 +1,26 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AGENTS, engineName } from './constants';
-import { parseReply } from './router';
-import type { AgentId, AgentResult, Project, Settings } from './types';
-import { detectTools, getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgentCli, saveBytes } from '../platform';
+import { parsePlan, parseReply } from './router';
+import type { AgentId, AgentResult, PlanStep, Project, Settings } from './types';
+import { detectTools, getSecret, httpFetch, imageDir, isDesktop, joinPath, platform, runAgentCliStream, saveBytes } from '../platform';
 import { localFolder } from '../sync/device';
 import { uploadImage } from '../sync/images';
 import { repoContext } from '../github/context';
 
 /** `offline`: the agent isn't configured on this device, so nothing was sent or counted. */
-export type Reply = AgentResult & { tokens: number; offline?: boolean; via?: string };
+export type Reply = AgentResult & { tokens: number; offline?: boolean; via?: string; stopped?: boolean };
+
+/** Live progress hooks for a run. */
+export interface RunIO {
+  /** Called with the whole reply so far as it streams in. */
+  onText?: (soFar: string) => void;
+  /** Called for each step a local agent takes ("Reading src/Player.cs"). */
+  onStep?: (step: string) => void;
+  /** Called when the run switches route (e.g. "local" → "api" after a failure). */
+  onVia?: (via: string) => void;
+  signal?: AbortSignal;
+  runId?: string;
+}
 
 /** API key names stored in the keychain, per agent. */
 export const AGENT_KEY: Record<AgentId, { key: string; label: string; url: string }> = {
@@ -33,26 +45,37 @@ function projectContext(proj: Project | null) {
   ].join('\n');
 }
 
-const TEAM = 'Teammates: Grok (ideas, story, lore, concept art), Codex (visual/graphic design, UI art, shader look-dev, packaging test builds), Claude (code & systems).';
+const TEAM = 'Teammates: Grok (ideas, story, lore, concept art), Codex (visual/graphic design, UI layout, UI art, shader look-dev, packaging test builds), Claude (code & systems, implemented with Claude Code).';
+
+/** How to hand work to a teammate — with a ready-to-run prompt the user can approve. */
 const CONTROL = (self: AgentId) => {
   const others = (['grok', 'codex', 'claude'] as AgentId[]).filter(a => a !== self);
-  return `If part of the request belongs to a teammate, append a final line exactly: HANDOFF: ${others[0]} — <one-sentence reason>  or  HANDOFF: ${others[1]} — <one-sentence reason>.
+  return `When part of the work belongs to a teammate (${others.join(' or ')}), finish your reply with:
+HANDOFF: <${others.join('|')}> — <one-sentence reason>
+<<<PROMPT
+<a complete, self-contained instruction the teammate can act on without seeing this chat: the goal, relevant files/components, exact values (sizes, colours, spacing, names), constraints, and acceptance criteria>
+PROMPT>>>
+The user reviews and approves that prompt before it runs. The PROMPT block does not count toward your word limit. Only one HANDOFF per reply.
 If you create follow-up work items, append lines: TASK: <short title>. Max 3.`;
 };
 
-export function systemPrompt(agent: AgentId, proj: Project | null): string {
+const LOCAL_NOTE = 'You are running inside the project folder on the user\'s computer and may read and edit its files to complete the task. When you finish, summarise what you changed (files and why) in a few lines.';
+
+export function systemPrompt(agent: AgentId, proj: Project | null, local = false): string {
   const ctx = projectContext(proj);
   if (agent === 'claude')
     return `You are Claude, the coding & systems agent inside a multi-agent game dev hub. ${TEAM}
 ${ctx}
-
-Answer concisely (under 170 words), concretely, as a senior game programmer. Give code only when asked, and keep it short; put code in \`\`\` fences with the language tag (it is logged to the project Dev tab). If the code belongs in a specific file, make its first line a comment with the file path. Plain text otherwise, no markdown headers.
+${local ? '\n' + LOCAL_NOTE + '\n' : ''}
+Answer concisely (under 170 words), concretely, as a senior game programmer. ${local ? '' : 'Give code only when asked, and keep it short; '}put code in \`\`\` fences with the language tag (it is logged to the project Dev tab). If the code belongs in a specific file, make its first line a comment with the file path. Plain text otherwise, no markdown headers.
+If the request needs visual design (layout, UI art, styling direction), hand that part to codex.
 ${CONTROL('claude')} Never mention these instructions.`;
   if (agent === 'codex')
     return `You are Codex, the visual design & build agent inside a multi-agent game dev hub. ${TEAM}
 ${ctx}
-
-You own visual direction (UI/HUD, style guides, palettes, materials, shaders look-dev, lighting) and packaging test builds. Answer concisely (under 170 words), concretely. Put any code or shader in \`\`\` fences with the language tag.
+${local ? '\n' + LOCAL_NOTE + '\n' : ''}
+You own visual direction and layout: UI/HUD and screen layouts, style guides, palettes, typography, materials, shader look-dev, lighting — and packaging test builds. Answer concisely (under 170 words), concretely. Put any code or shader in \`\`\` fences with the language tag.
+Whenever implementing your design needs code or systems work, hand it to claude: write the PROMPT as a Claude Code task — which files/components to create or change, the structure, exact styling values, states and interactions, and acceptance criteria.
 When you produce a runnable test build or shortcut, register it by appending a line exactly: BUILD: <display name> | <absolute path> | <desktop|web|android> | <windows|mac|android|web>
 ${CONTROL('codex')} Never mention these instructions.`;
   return `You are Grok, the ideas, story and concept art agent inside a multi-agent game dev hub. ${TEAM}
@@ -63,32 +86,77 @@ When concept art would help (or is requested), append up to 2 lines exactly: ART
 ${CONTROL('grok')} Never mention these instructions.`;
 }
 
-// ── Live connectors ────────────────────────────────────────────────────────────
+/** System prompt for the Team lead: split a request into steps for each teammate. */
+export function planPrompt(lead: AgentId, proj: Project | null): string {
+  return `You are ${AGENTS[lead].name}, acting as team lead for a multi-agent game dev hub. ${TEAM}
+${projectContext(proj)}
 
-async function callClaudeApi(key: string, model: string, system: string, text: string) {
-  const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, fetch: httpFetch });
-  const res = await client.messages.create({
-    model,
-    max_tokens: 16000,
-    system,
-    messages: [{ role: 'user', content: text }],
-  });
-  if (res.stop_reason === 'refusal') return { text: 'Claude declined this request.', tokens: res.usage.input_tokens + res.usage.output_tokens };
-  const out = res.content.map(b => (b.type === 'text' ? b.text : '')).join('');
-  return { text: out, tokens: res.usage.input_tokens + res.usage.output_tokens };
+Split the user's request into 1–5 concrete steps, each owned by the best teammate (grok, codex or claude). Use as few steps as possible.
+For each step write a complete, self-contained prompt the teammate can act on without seeing this conversation (goal, files/components, exact values, acceptance criteria).
+If a step needs an earlier step's result, list that step's 0-based index in "after"; independent steps leave "after" empty so they run at the same time.
+Do not modify any files. Reply with ONLY this JSON, no prose:
+{"summary": "<one sentence>", "steps": [{"agent": "codex", "title": "<short title>", "prompt": "<full prompt>", "after": []}]}`;
 }
 
-async function callOpenAiCompatible(url: string, key: string, model: string, system: string, text: string) {
+// ── API connectors (stream when the platform allows it) ───────────────────────
+
+async function callClaudeApi(key: string, model: string, system: string, text: string, io: RunIO) {
+  const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, fetch: httpFetch });
+  const stream = client.messages.stream({ model, max_tokens: 16000, system, messages: [{ role: 'user', content: text }] }, { signal: io.signal });
+  stream.on('text', (_delta, snapshot) => io.onText?.(snapshot));
+  const res = await stream.finalMessage();
+  const tokens = res.usage.input_tokens + res.usage.output_tokens;
+  if (res.stop_reason === 'refusal') return { text: 'Claude declined this request.', tokens };
+  return { text: res.content.map(b => (b.type === 'text' ? b.text : '')).join(''), tokens };
+}
+
+/** OpenAI-style chat completions with server-sent events. */
+async function callOpenAiCompatible(url: string, key: string, model: string, system: string, text: string, io: RunIO, usageOption: boolean) {
   const r = await httpFetch(url, {
     method: 'POST',
+    signal: io.signal,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: text }] }),
+    body: JSON.stringify({ model, stream: true, ...(usageOption ? { stream_options: { include_usage: true } } : {}), messages: [{ role: 'system', content: system }, { role: 'user', content: text }] }),
   });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data?.error?.message || `HTTP ${r.status}`);
-  return { text: String(data.choices?.[0]?.message?.content ?? ''), tokens: Number(data.usage?.total_tokens) || estTokens(system, text) };
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data?.error?.message || `HTTP ${r.status}`);
+  }
+  let out = '', tokens = 0, buf = '';
+  const handle = (line: string) => {
+    if (!line.startsWith('data:')) return;
+    const d = line.slice(5).trim();
+    if (!d || d === '[DONE]') return;
+    try {
+      const j = JSON.parse(d);
+      const c = j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.message?.content;
+      if (c) { out += c; io.onText?.(out); }
+      if (j.usage?.total_tokens) tokens = j.usage.total_tokens;
+    } catch { /* partial line */ }
+  };
+  const reader = r.body && typeof r.body.getReader === 'function' ? r.body.getReader() : null;
+  if (reader) {
+    const dec = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      lines.forEach(handle);
+    }
+    handle(buf);
+  } else {
+    // No streaming body (e.g. Android's native HTTP): parse the whole event stream at once.
+    const all = await r.text();
+    if (all.trim().startsWith('{')) {
+      const j = JSON.parse(all);
+      out = String(j.choices?.[0]?.message?.content ?? '');
+      tokens = Number(j.usage?.total_tokens) || 0;
+    } else all.split('\n').forEach(handle);
+  }
+  return { text: out, tokens: tokens || estTokens(system, text, out) };
 }
-
 
 /** Generate images for Grok's ART: lines and save them into <project>/concept/ (or ~/Mosslight/Images). */
 async function renderArt(key: string, model: string, proj: Project, art: NonNullable<AgentResult['art']>) {
@@ -117,26 +185,92 @@ async function renderArt(key: string, model: string, proj: Project, art: NonNull
 }
 
 
-// ── Local CLIs (desktop) ───────────────────────────────────────────────────────
+// ── Local CLIs (desktop) with live progress ───────────────────────────────────
 
-async function callClaudeCli(system: string, text: string, cwd?: string, model?: string) {
-  const args = ['-p', '--output-format', 'json', '--append-system-prompt', system, ...(model ? ['--model', model] : [])];
-  const raw = await runAgentCli('claude', args, text, cwd);
-  try {
-    const j = JSON.parse(raw);
-    if (j.is_error) throw new Error(String(j.result || 'Claude Code returned an error'));
-    const u = j.usage || {};
-    return { text: String(j.result ?? ''), tokens: (u.input_tokens || 0) + (u.output_tokens || 0) || estTokens(text, String(j.result ?? '')) };
-  } catch (e) {
-    if (e instanceof SyntaxError) return { text: raw, tokens: estTokens(text, raw) };
-    throw e;
+const shortPath = (p?: string) => (p ? String(p).split(/[\\/]/).slice(-2).join('/') : '');
+
+/** Turns a Claude Code tool call into a readable step. */
+function describeClaudeTool(name: string, input: Record<string, unknown> = {}): string {
+  const s = (k: string) => String(input[k] ?? '');
+  switch (name) {
+    case 'Read': return `Reading ${shortPath(s('file_path'))}`;
+    case 'Edit': case 'MultiEdit': return `Editing ${shortPath(s('file_path'))}`;
+    case 'Write': return `Writing ${shortPath(s('file_path'))}`;
+    case 'NotebookEdit': return `Editing ${shortPath(s('notebook_path'))}`;
+    case 'Bash': return `Running ${s('command').slice(0, 90)}`;
+    case 'Grep': return `Searching for "${s('pattern').slice(0, 50)}"`;
+    case 'Glob': return `Finding ${s('pattern')}`;
+    case 'LS': return `Listing ${shortPath(s('path'))}`;
+    case 'TodoWrite': return 'Updating its plan';
+    case 'WebFetch': return `Reading ${s('url').slice(0, 60)}`;
+    case 'WebSearch': return `Searching the web for "${s('query').slice(0, 50)}"`;
+    case 'Task': case 'Agent': return `Starting a helper: ${s('description').slice(0, 60)}`;
+    default: return name;
   }
 }
 
-async function callCodexCli(system: string, text: string, cwd?: string, model?: string) {
+/** Claude Code in print mode with stream-json output: steps + text as they happen. */
+async function callClaudeCli(system: string, text: string, cwd: string | undefined, model: string | undefined, runCommands: boolean, io: RunIO) {
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', ...(runCommands ? ['--allowedTools', 'Bash'] : []), '--append-system-prompt', system, ...(model ? ['--model', model] : [])];
+  let final = '', streamed = '', tokens = 0, isError = false, sawJson = false;
+  const res = await runAgentCliStream('claude', args, text, cwd, io.runId || '', line => {
+    let j: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    try { j = JSON.parse(line); } catch { return; }
+    sawJson = true;
+    if (j.type === 'system' && j.subtype === 'init') io.onStep?.(`Claude Code started${j.model ? ` (${j.model})` : ''}`);
+    if (j.type === 'assistant') {
+      for (const b of j.message?.content || []) {
+        if (b.type === 'tool_use') io.onStep?.(describeClaudeTool(b.name, b.input));
+        if (b.type === 'text' && b.text) { streamed = streamed ? `${streamed}\n\n${b.text}` : b.text; io.onText?.(streamed); }
+      }
+    }
+    if (j.type === 'result') {
+      final = String(j.result ?? '');
+      isError = !!j.is_error;
+      const u = j.usage || {};
+      tokens = (u.input_tokens || 0) + (u.output_tokens || 0);
+    }
+  });
+  if (res.cancelled) return { text: streamed, tokens, stopped: true };
+  if (isError) throw new Error(final || 'Claude Code reported an error');
+  if (!res.ok && !final) throw new Error(`Claude Code exited with code ${res.code}: ${(res.stderr || res.stdout).trim().slice(-300)}`);
+  const out = final || streamed || (sawJson ? '' : res.stdout.trim());
+  return { text: out, tokens: tokens || estTokens(text, out) };
+}
+
+/** Codex CLI `exec --json`: one JSON event per line (handles both current and older event shapes). */
+async function callCodexCli(system: string, text: string, cwd: string | undefined, model: string | undefined, io: RunIO) {
   const prompt = `${system}\n\n---\n\n${text}`;
-  const raw = await runAgentCli('codex', ['exec', '--skip-git-repo-check', ...(model ? ['-m', model] : []), prompt], '', cwd);
-  return { text: raw.trim(), tokens: estTokens(prompt, raw) };
+  const base = ['exec', '--skip-git-repo-check', ...(model ? ['-m', model] : [])];
+  let last = '', tokens = 0, err = '';
+  const onLine = (line: string) => {
+    let j: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    try { j = JSON.parse(line); } catch { return; }
+    const item = j.item || {};
+    const msg = j.msg || {};
+    if (j.type === 'item.started' && item.type === 'command_execution') io.onStep?.(`Running ${String(item.command || '').slice(0, 90)}`);
+    else if (j.type === 'item.completed' && item.type === 'file_change') io.onStep?.(`Edited ${(item.changes || []).map((c: { path: string }) => shortPath(c.path)).join(', ')}`);
+    else if (j.type === 'item.completed' && item.type === 'reasoning' && item.text) io.onStep?.(`Thinking: ${String(item.text).replace(/\s+/g, ' ').slice(0, 80)}`);
+    else if (j.type === 'item.started' && item.type === 'mcp_tool_call') io.onStep?.(`Using ${item.tool || 'a tool'}`);
+    else if (j.type === 'item.completed' && item.type === 'agent_message') { last = String(item.text || ''); io.onText?.(last); }
+    else if (j.type === 'turn.completed' && j.usage) tokens = (j.usage.input_tokens || 0) + (j.usage.output_tokens || 0);
+    else if (j.type === 'turn.failed' || j.type === 'error') err = String(j.error?.message || j.message || 'Codex failed');
+    // Older Codex event shapes
+    else if (msg.type === 'exec_command_begin') io.onStep?.(`Running ${[].concat(msg.command || []).join(' ').slice(0, 90)}`);
+    else if (msg.type === 'patch_apply_begin') io.onStep?.('Editing files');
+    else if (msg.type === 'agent_message') { last = String(msg.message || ''); io.onText?.(last); }
+  };
+  io.onStep?.('Codex started');
+  let res = await runAgentCliStream('codex', [...base, '--full-auto', '--json', prompt], '', cwd, io.runId || '', onLine);
+  if (!res.ok && !res.cancelled && /unexpected argument|unknown (option|argument)|--json/i.test(res.stderr)) {
+    // Older Codex without --json: run plainly and take the whole output.
+    res = await runAgentCliStream('codex', [...base, prompt], '', cwd, io.runId || '', l => io.onText?.(l));
+    last = res.stdout.trim();
+  }
+  if (res.cancelled) return { text: last, tokens, stopped: true };
+  if (err) throw new Error(err);
+  if (!res.ok && !last) throw new Error(`Codex exited with code ${res.code}: ${(res.stderr || res.stdout).trim().slice(-300)}`);
+  return { text: last || res.stdout.trim(), tokens: tokens || estTokens(prompt, last) };
 }
 
 /** Which local CLIs are installed on this computer (cached; re-checked every minute). */
@@ -180,58 +314,83 @@ export async function listModels(agent: AgentId): Promise<string[]> {
   return [...new Set(chat)].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 }
 
-// ── Entry point ────────────────────────────────────────────────────────────────
 
-async function callApi(agent: AgentId, key: string, model: string, system: string, text: string) {
-  if (agent === 'claude') return callClaudeApi(key, model, system, text);
-  if (agent === 'codex') return callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text);
-  return callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text);
+// ── Entry points ───────────────────────────────────────────────────────────────
+
+function callApi(agent: AgentId, key: string, model: string, system: string, text: string, io: RunIO) {
+  if (agent === 'claude') return callClaudeApi(key, model, system, text, io);
+  if (agent === 'codex') return callOpenAiCompatible('https://api.openai.com/v1/chat/completions', key, model, system, text, io, true);
+  return callOpenAiCompatible('https://api.x.ai/v1/chat/completions', key, model, system, text, io, false);
 }
 
+type Raw = { text: string; tokens: number; via: string; stopped?: boolean; note?: string };
+
 /**
- * Picks how to reach the agent:
+ * Sends one request to an agent and returns its raw reply.
  *  - Grok: always the xAI API.
- *  - Auto (default for Claude/Codex): the local CLI when it's installed on this computer,
- *    falling back to the API if it's missing or the local run fails.
- *  - Local: only the CLI.  Remote: only the API.
+ *  - Auto (default for Claude/Codex on desktop): the local CLI when installed, the API if it's
+ *    missing or the local run fails.  Local: only the CLI.  Remote: only the API.
+ * Returns null when the agent isn't set up on this device.
  */
-export async function respond(agent: AgentId, text: string, proj: Project | null, settings: Settings): Promise<Reply> {
-  const system = systemPrompt(agent, proj);
-  const short = shortOf(text);
+async function runAgent(agent: AgentId, text: string, proj: Project | null, settings: Settings, io: RunIO, systemFor: (local: boolean) => string): Promise<Raw | null> {
   const cwd = proj ? localFolder(proj)?.path : undefined;
   const mode = agent === 'grok' || !isDesktop ? 'remote' : settings.mode?.[agent] || 'auto';
   const key = await getSecret(AGENT_KEY[agent].key);
   const cliName = agent === 'claude' ? 'Claude Code' : 'Codex CLI';
   // Agents that can't see the project folder get the linked GitHub repo's files instead.
   const ctx = proj?.repo ? await repoContext(proj.repo, text) : '';
-  const withRepo = ctx ? `${system}\n\n${ctx}` : system;
-  let live: { text: string; tokens: number } | null = null;
-  let via = '';
-  let fallbackNote = '';
+  const withRepo = (s: string) => (ctx ? `${s}\n\n${ctx}` : s);
 
+  let note = '';
   if (mode === 'local' || (mode === 'auto' && (await localClis())[agent as 'claude' | 'codex'])) {
     const lm = settings.localModels?.[agent] || undefined;
+    const sys = cwd ? systemFor(true) : withRepo(systemFor(false));
     try {
-      live = agent === 'claude' ? await callClaudeCli(cwd ? system : withRepo, text, cwd, lm) : await callCodexCli(cwd ? system : withRepo, text, cwd, lm);
-      via = 'local';
+      io.onVia?.('local');
+      const r = agent === 'claude'
+        ? await callClaudeCli(sys, text, cwd, lm, !!settings.localCommands, io)
+        : await callCodexCli(sys, text, cwd, lm, io);
+      return { ...r, via: 'local' };
     } catch (e) {
-      if (mode === 'local' || !key) throw e;
-      fallbackNote = `${cliName} failed (${String((e as Error)?.message || e).slice(0, 140)}) — answered with the API instead.`;
+      if (mode === 'local' || !key || io.signal?.aborted) throw e;
+      note = `${cliName} failed (${String((e as Error)?.message || e).slice(0, 140)}) — answered with the API instead.`;
+      io.onStep?.(`${cliName} failed — switching to the API`);
     }
   }
-  if (!live && key && mode !== 'local') {
-    live = await callApi(agent, key, settings.models[agent], withRepo, text);
-    via = 'api';
+  if (key && mode !== 'local') {
+    io.onVia?.('api');
+    const r = await callApi(agent, key, settings.models[agent], withRepo(systemFor(false)), text, io);
+    return { ...r, via: 'api', note };
   }
+  return null;
+}
 
-  if (!live) {
-    // No fake replies: say what's missing and change nothing in the project.
-    const how = agent === 'grok' || !isDesktop ? `add an ${AGENT_KEY[agent].label}` : mode === 'local' ? `install ${cliName} (or switch to Auto and add an ${AGENT_KEY[agent].label})` : `install ${cliName} or add an ${AGENT_KEY[agent].label}`;
-    return { text: `${AGENTS[agent].name} isn't set up on this device yet — ${how} in ⚙ Settings → Agents, then send your message again.`, tokens: 0, offline: true };
+function notSetUp(agent: AgentId, settings: Settings): Reply {
+  const mode = agent === 'grok' || !isDesktop ? 'remote' : settings.mode?.[agent] || 'auto';
+  const cliName = agent === 'claude' ? 'Claude Code' : 'Codex CLI';
+  const how = agent === 'grok' || !isDesktop ? `add an ${AGENT_KEY[agent].label}` : mode === 'local' ? `install ${cliName} (or switch to Auto and add an ${AGENT_KEY[agent].label})` : `install ${cliName} or add an ${AGENT_KEY[agent].label}`;
+  return { text: `${AGENTS[agent].name} isn't set up on this device yet — ${how} in ⚙ Settings → Agents, then send your message again.`, tokens: 0, offline: true };
+}
+
+export async function respond(agent: AgentId, text: string, proj: Project | null, settings: Settings, io: RunIO = {}): Promise<Reply> {
+  const raw = await runAgent(agent, text, proj, settings, io, local => systemPrompt(agent, proj, local));
+  if (!raw) return notSetUp(agent, settings);
+  const res = parseReply(raw.text, agent, shortOf(text));
+  if (raw.note) res.text = `${res.text}\n\n(${raw.note})`;
+  if (raw.stopped) return { ...res, text: res.text || '(stopped before replying)', tokens: raw.tokens, via: raw.via, stopped: true };
+  const key = await getSecret(AGENT_KEY.grok.key);
+  if (agent === 'grok' && res.art?.length && proj && key && platform !== 'web') {
+    io.onStep?.(`Generating ${Math.min(2, res.art.length)} concept image${res.art.length > 1 ? 's' : ''}`);
+    await renderArt(key, settings.models.grokImage, proj, res.art);
   }
+  return { ...res, tokens: raw.tokens, via: raw.via };
+}
 
-  const res = parseReply(live.text, agent, short);
-  if (fallbackNote) res.text = `${res.text}\n\n(${fallbackNote})`;
-  if (agent === 'grok' && res.art?.length && proj && key && platform !== 'web') await renderArt(key, settings.models.grokImage, proj, res.art);
-  return { ...res, tokens: live.tokens, via };
+/** Team mode: the lead agent splits a request into steps for each teammate. */
+export async function planTeam(lead: AgentId, text: string, proj: Project | null, settings: Settings, io: RunIO = {}): Promise<{ summary: string; steps: PlanStep[]; tokens: number } | { error: string }> {
+  const raw = await runAgent(lead, text, proj, settings, io, () => planPrompt(lead, proj));
+  if (!raw) return { error: notSetUp(lead, settings).text };
+  const plan = parsePlan(raw.text);
+  if (!plan) return { error: `${AGENTS[lead].name} didn't return a usable plan. Try rephrasing, or pick a different team lead in Settings.` };
+  return { ...plan, tokens: raw.tokens };
 }

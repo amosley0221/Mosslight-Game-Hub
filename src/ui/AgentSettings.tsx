@@ -4,7 +4,7 @@ import { AGENT_KEY, listModels, localClis } from '../core/agents';
 import type { Hub } from '../core/store';
 import type { AgentId, AgentMode } from '../core/types';
 import { isDesktop } from '../platform';
-import { Glyph } from './common';
+import { Glyph, Switch } from './common';
 
 const MODE_LABEL: Record<AgentMode, string> = { auto: 'Auto', local: 'Local', remote: 'API' };
 
@@ -107,6 +107,33 @@ export function AgentSettings({ hub, keys, onAddKey }: { hub: Hub; keys: Record<
             </div>
           );
         })}
+      </div>
+      <div style={{ marginTop: 8, background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Auto-approve handoffs</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>When one agent hands work to another (e.g. Codex → Claude), start it right away instead of waiting for Approve.</div>
+          </div>
+          <Switch on={!!settings.autoHandoff} onClick={() => updSettings(s => ({ ...s, autoHandoff: !s.autoHandoff }))} />
+        </div>
+        <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Team lead</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Who splits a Team request into steps for everyone.</div>
+          </div>
+          <select value={settings.teamLead || 'codex'} onChange={e => updSettings(s => ({ ...s, teamLead: e.target.value as AgentId }))} style={{ background: 'var(--panel)', border: '1px solid var(--line-2)', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}>
+            {ORDER.map(a => <option key={a} value={a}>{AGENTS[a].name}</option>)}
+          </select>
+        </div>
+        {isDesktop && (
+          <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Let Claude Code run commands</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Local Claude Code can always edit project files. Turn this on to also let it run builds and tests without asking. (Codex runs commands inside its own sandbox.)</div>
+            </div>
+            <Switch on={!!settings.localCommands} onClick={() => updSettings(s => ({ ...s, localCommands: !s.localCommands }))} />
+          </div>
+        )}
       </div>
       <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
         {isDesktop
