@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.22.2] - 2026-09-23
+
+### Fixed
+- **A newly installed CLI could read as "not found" until Mosslight was launched fresh.** A process keeps the PATH it started with, and an app relaunched by its own updater inherits the old one — so adding Codex to your PATH and updating in place left it invisible. Mosslight now also looks where the official installers put things (`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`, the Anthropic equivalent), so installing a CLI doesn't depend on restarting anything.
 ## [0.22.1] - 2026-09-23
 
 ### Changed

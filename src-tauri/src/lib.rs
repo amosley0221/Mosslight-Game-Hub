@@ -286,6 +286,14 @@ fn search_path() -> String {
                 parts.push(format!("{appdata}\\npm"));
             }
             parts.push(format!("{h}\\.local\\bin"));
+            // Where the official installers put these. A process inherits the PATH it started
+            // with, so an app relaunched by its own updater never sees a new PATH entry —
+            // looking here directly means installing a CLI doesn't need a fresh launch.
+            if let Some(local) = dirs::data_local_dir() {
+                let l = local.to_string_lossy();
+                parts.push(format!("{l}\\Programs\\OpenAI\\Codex\\bin"));
+                parts.push(format!("{l}\\Programs\\Anthropic\\Claude\\bin"));
+            }
         } else {
             for p in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
                 parts.push(p.into());
