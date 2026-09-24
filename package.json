@@ -1,7 +1,7 @@
 {
   "name": "mosslight-game-hub",
   "private": true,
-  "version": "0.27.1",
+  "version": "0.28.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,11 +20,13 @@
     "@capacitor/browser": "^7.0.0",
     "@capacitor/core": "^7.0.0",
     "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
     "@capacitor/preferences": "^7.0.0",
     "@tauri-apps/api": "^2.1.0",
     "qrcode": "^1.5.4",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-http": "^2.0.0",
+    "@tauri-apps/plugin-notification": "^2.0.0",
     "@tauri-apps/plugin-opener": "^2.2.0",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-updater": "^2.0.0",

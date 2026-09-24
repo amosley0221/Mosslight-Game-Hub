@@ -3,6 +3,12 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.28.0] - 2026-09-23
+
+### Added
+- **Notifications when something needs you.** A run takes minutes, so the app is usually behind something else by the time it wants an answer. Mosslight now notifies you — on the desktop and on the phone — when a handoff is waiting for approval, when a team plan is ready to run, when the agents need you to pick who takes a request, and when a long run finishes or fails.
+  - On the desktop it stays quiet while you're looking at the window, and says nothing about a reply that took a few seconds.
+  - **⚙ Settings → Agents → Tell me when something needs me** turns it off. Permission is asked for once, the first time there's something worth saying.
 ## [0.27.1] - 2026-09-23
 
 ### Added

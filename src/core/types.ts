@@ -213,6 +213,8 @@ export interface Settings {
   localCommands?: boolean;
   /** Codex's sandbox can reach the network (git fetch/push, installs). Unset means yes. */
   cliNetwork?: boolean;
+  /** Notify when something needs approval. Unset means yes. */
+  notify?: boolean;
   /** Agent that plans Team requests. */
   teamLead?: AgentId;
   device: { name: string; paired: boolean };

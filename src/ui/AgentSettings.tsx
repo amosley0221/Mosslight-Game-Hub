@@ -134,6 +134,13 @@ export function AgentSettings({ hub, keys, onAddKey }: { hub: Hub; keys: Record<
             <Switch on={!!settings.localCommands} onClick={() => updSettings(s => ({ ...s, localCommands: !s.localCommands }))} />
           </div>
         )}
+        <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Tell me when something needs me</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>A notification when a handoff or plan is waiting for your OK, when an agent asks which of them should take a request, and when a long run finishes{isDesktop ? ' while you\'re in another window' : ''}.</div>
+          </div>
+          <Switch on={settings.notify !== false} onClick={() => updSettings(s => ({ ...s, notify: s.notify === false }))} />
+        </div>
         {isDesktop && (
           <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
             <div>

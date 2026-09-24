@@ -19,6 +19,7 @@ import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
 import { backup, cloneRepo, connectFolder, detectRepo, pushBranch, unpushedBranches } from '../github/git';
 import { installKit, kitPrompt } from '../brand/kit';
 import { loadState, readLegacy, saveState } from './storage';
+import { looking, notify } from '../platform/notify';
 import { beginRun, endRun, startRun } from './runs';
 import { CARD_DIR, cardRelPath, parseCard, writeCard } from './cards';
 import { runImages } from './shots';
@@ -345,6 +346,16 @@ export function useHub() {
     return out;
   }, []);
 
+  /**
+   * A notification for the moments that need you. Runs take minutes, so the app is usually
+   * behind something else by then — but never notify about what's already on screen.
+   */
+  const tell = useCallback((title: string, body: string) => {
+    if (settingsRef.current.notify === false) return;
+    if (isDesktop && looking()) return;
+    void notify(title, body);
+  }, []);
+
   const approveRef = useRef<(key: string, m: Extract<Message, { type: 'handoff' }>, prompt?: string, auto?: boolean) => void>();
 
   /**
@@ -409,6 +420,10 @@ export function useHub() {
         steps: live.steps.slice(-200), route: res.via ? `${routeLabel} · ${res.via}` : routeLabel,
       });
       applyReply(key, agent, text, res);
+      // Worth telling you about a long run, but not a quick reply you're sitting in front of.
+      if (!res.stopped && (res.error || (m => m > 45_000)(now() - runStart))) {
+        tell(`${AGENTS[agent].name} ${res.error ? 'hit a problem' : 'finished'}`, res.text.split('\n').find(Boolean)?.slice(0, 140) || text.slice(0, 140));
+      }
       // Pictures this run made: art the agent generated, files it wrote, and anything new in the
       // project's capture folders (engine screenshots, renders).
       void (async () => {
@@ -421,6 +436,7 @@ export function useHub() {
         const h: Extract<Message, { type: 'handoff' }> = { id: uid(), type: 'handoff', from: agent, to: res.handoff.to, reason: res.handoff.reason, prompt: res.handoff.prompt, status: 'pending', userText: text };
         push(key, h);
         if (settingsRef.current.autoHandoff) window.setTimeout(() => approveRef.current?.(key, h, undefined, true), 50);
+        else tell(`${AGENTS[agent].name} needs your OK`, `${AGENTS[agent].name} wants ${AGENTS[res.handoff.to].name} to take this: ${res.handoff.reason}`);
       }
       // A local agent may have changed files — back them up if the project auto-backs up.
       if (res.via === 'local' && !res.stopped && proj?.repo?.auto) void backupRef.current?.(proj.id, `${AGENTS[agent].name}: ${text.split('\n')[0].slice(0, 60)}`, true);
@@ -725,6 +741,7 @@ export function useHub() {
       if ('error' in plan) updPlan(key, id, () => ({ status: 'failed', error: plan.error }));
       else {
         updPlan(key, id, () => ({ status: 'pending', summary: plan.summary, steps: plan.steps }));
+        tell('A plan is ready', `${AGENTS[lead].name} split this into ${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'} — approve it to start.`);
         applyReply(key, lead, text, { text: '', tokens: plan.tokens });
       }
     } catch (e) {
@@ -761,7 +778,10 @@ export function useHub() {
     push(key, { id: uid(), type: 'user', text, ...(files.length ? { attachments: files } : {}) });
     if (forced === 'team') return void startTeam(key, text, files);
     const r = forced ? { agent: forced, hit: 'manual' } : route(text);
-    if (!r.agent) return push(key, { id: uid(), type: 'choose', userText: text });
+    if (!r.agent) {
+      tell('Which agent should take this?', text.split('\n')[0].slice(0, 90));
+      return push(key, { id: uid(), type: 'choose', userText: text });
+    }
     void dispatch(key, r.agent, text, r.hit === 'manual' ? 'you picked ' + AGENTS[r.agent].name : `auto-routed · "${r.hit}"`, files);
   }, [dispatch, push, startTeam]);
 
