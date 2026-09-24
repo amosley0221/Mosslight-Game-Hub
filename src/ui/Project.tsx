@@ -9,7 +9,7 @@ import { RepoCard } from './GitHub';
 import { ArtTab, useProjectImages } from './Media';
 import { StoryTab } from './Story';
 import { MusicTab } from './Music';
-import { Dot, Glyph, TASK_DRAG, asset, coverOf } from './common';
+import { Dot, Glyph, asset, coverOf } from './common';
 import { deviceId } from '../sync/device';
 import { useImageSrc } from '../sync/images';
 import { TagPicks, launchProps, recommend, tileInfo } from './Library';
@@ -192,6 +192,10 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
   const n = p.next;
   // Up next shows five, so a new task can land below the fold with nothing to say it arrived.
   const already = (title: string) => p.tasks.find(t => t.title === title && t.status !== 'done');
+  // A step whose task is finished has served its purpose — it shouldn't sit here looking undone,
+  // and it must not offer Add again, which would make a fresh copy of work already carried out.
+  const finished = (title: string) => p.tasks.some(t => t.title === title && t.status === 'done');
+  const steps = (n?.steps || []).filter(s => !finished(s.title));
   const add = (t: { title: string; agent?: AgentId }, start = false) => {
     if (already(t.title)) return;
     const a = t.agent || lead;
@@ -210,14 +214,14 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
       {n ? (
         <>
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.65, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{n.text}</p>
-          {!!n.steps.length && (
+          {!!steps.length && (
             <>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginTop: 14, marginBottom: 6, gap: 10 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)' }}>In the order {AGENTS[lead].name} would do them — start with the first.</span>
-                {n.steps.length > 1 && <button className="link" style={{ flex: 'none' }} onClick={() => n.steps.forEach(s => add(s))}>Add all</button>}
+                {steps.length > 1 && <button className="link" style={{ flex: 'none' }} onClick={() => steps.forEach(s => add(s))}>Add all</button>}
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
-                {n.steps.map((s, i) => (
+                {steps.map((s, i) => (
                   <div key={i} className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'space-between', background: 'var(--well)', borderRadius: 10, padding: '8px 10px' }}>
                     <span className="row" style={{ gap: 8, alignItems: 'center', minWidth: 0 }}>
                       <span className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', width: 14, flex: 'none', textAlign: 'right' }}>{i + 1}</span>
@@ -426,23 +430,15 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
         <h3 className="eyebrow" style={{ marginBottom: 14 }}>Up next{open.length ? ` · ${open.length}` : ''}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {upNext.map(x => (
-            // A <button> is the obvious element here, but Chromium won't reliably begin a drag
-            // from one — its own mouse handling wins — so this is a div that behaves like a button.
-            <div key={x.id} role="button" tabIndex={0} className="row hover-line"
-              draggable
-              title="Click to change its status, or drag it into the chat to hand it to its agent"
-              onClick={() => hub.cycleTask(p.id, x.id)}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hub.cycleTask(p.id, x.id); } }}
-              onDragStart={e => {
-                e.dataTransfer.setData(TASK_DRAG, x.id);
-                // Some targets only look at text/plain; the title is a sensible thing to land there.
-                e.dataTransfer.setData('text/plain', x.title);
-                e.dataTransfer.effectAllowed = 'copyMove';
-              }}
-              style={{ gap: 10, textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', fontSize: 13, cursor: 'grab', userSelect: 'none' }}>
-              <Glyph agent={x.agent} size={22} />
-              <span style={{ flex: 1 }}>{x.title}</span>
-              <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{x.status}</span>
+            <div key={x.id} className="row hover-line"
+              style={{ gap: 10, textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', fontSize: 13 }}>
+              <button title="Change its status" onClick={() => hub.cycleTask(p.id, x.id)} className="row" style={{ gap: 10, flex: 1, minWidth: 0, background: 'none', border: 0, padding: 0, textAlign: 'left', fontSize: 13, color: 'inherit' }}>
+                <Glyph agent={x.agent} size={22} />
+                <span style={{ flex: 1, minWidth: 0 }}>{x.title}</span>
+              </button>
+              {x.status === 'doing'
+                ? <span className="mono" style={{ fontSize: 10, color: 'var(--muted)', flex: 'none' }}>running</span>
+                : <button className="link" style={{ flex: 'none', fontSize: 12 }} title={`${AGENTS[x.agent].name} starts on it now`} onClick={() => void hub.runTask(p.id, x.id)}>Start</button>}
             </div>
           ))}
           {open.length > upNext.length && (
@@ -508,6 +504,9 @@ function Tasks({ hub, p }: { hub: Hub; p: P }) {
           <span style={{ display: 'block', fontSize: 13, lineHeight: 1.4, color: done ? 'var(--muted)' : 'inherit', textDecoration: done ? 'line-through' : 'none' }}>{x.title}</span>
           {x.card && <span className="mono ellipsis" style={{ display: 'block', fontSize: 10, color: 'var(--dim)', marginTop: 2 }}>{x.card}</span>}
         </span>
+        {!done && (x.status === 'doing'
+          ? <span className="mono" style={{ fontSize: 10, color: 'var(--muted)', flex: 'none', marginTop: 3 }}>running</span>
+          : <button className="link" style={{ flex: 'none', fontSize: 12, marginTop: 1 }} title={`${AGENTS[x.agent].name} starts on it now`} onClick={() => void hub.runTask(p.id, x.id)}>Start</button>)}
         <button className="x" onClick={() => hub.updProj(p.id, q => ({ ...q, tasks: q.tasks.filter(y => y.id !== x.id) }))}>×</button>
       </div>
     );

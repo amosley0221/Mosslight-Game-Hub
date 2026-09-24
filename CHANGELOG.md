@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.36.0] - 2026-09-24
+
+### Changed
+- **Dragging a task into the chat is gone; every task has a Start button instead.** Two attempts at the drag gesture failed on your machine and I couldn't reproduce either, so rather than guess a third time this is a button — on every row in Up next and in the Tasks tab, not only on the lead's suggestions. It does the same thing the drag was for: hands the task to the agent that owns it, shows **running** while it works, and marks it done when it finishes.
+
+### Fixed
+- **A finished step stayed on the What's Next card.** Once its task was done the step reappeared offering **Add**, which would have made a second copy of work already carried out. A step whose task is finished now leaves the card, and the card empties as the work gets done.
 ## [0.35.2] - 2026-09-24
 
 ### Fixed
