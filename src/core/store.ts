@@ -16,7 +16,7 @@ import { merge, toDoc } from '../sync/merge';
 import { setImageStore, uploadFile, uploadImage } from '../sync/images';
 import { installOrLaunch, uploadApk } from '../sync/apk';
 import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
-import { backup, cloneRepo, connectFolder, detectRepo } from '../github/git';
+import { backup, cloneRepo, connectFolder, detectRepo, pushBranch, unpushedBranches } from '../github/git';
 import { installKit, kitPrompt } from '../brand/kit';
 import { loadState, readLegacy, saveState } from './storage';
 import { beginRun, endRun, startRun } from './runs';
@@ -928,6 +928,27 @@ export function useHub() {
   }, [updProj, toast]);
   backupRef.current = backupNow;
 
+  /** Branches an agent committed but couldn't push (its sandbox has no access to your credentials). */
+  const listUnpushed = useCallback(async (pid: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const path = p && localFolder(p)?.path;
+    if (!isDesktop || !path || !p.repo) return [];
+    return unpushedBranches(path).catch(() => []);
+  }, []);
+
+  const pushOne = useCallback(async (pid: string, branch: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const path = p && localFolder(p)?.path;
+    if (!path) return;
+    try {
+      await pushBranch(path, branch);
+      updProj(pid, q => ({ ...q, activity: [A('codex', `Pushed ${branch} to GitHub`), ...q.activity] }));
+      toast(`Pushed ${branch}`);
+    } catch (e) {
+      toast(String((e as Error)?.message || e));
+    }
+  }, [toast, updProj]);
+
   const withRepoBusy = useCallback(async (pid: string, label: string, fn: () => Promise<void>) => {
     setBusyRepo(pid);
     toast(label);
@@ -1601,7 +1622,7 @@ export function useHub() {
     draftSummary, importEntries, autoImportEntries, draftEntries, suggestEntries, proposeBios, addEntries, buildEntry,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
-    busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere,
+    busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere, listUnpushed, pushOne,
   };
 }
 

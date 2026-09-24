@@ -92,6 +92,40 @@ export async function backup(dir: string, message: string, protectBranch?: strin
 }
 
 /** Clone into `<parent>/<name>` and return the new folder. */
+export interface LocalBranch { name: string; ahead: number; pushed: boolean; subject: string }
+
+/**
+ * Branches with work that isn't on GitHub yet — including the ones agents committed in their own
+ * worktrees, since every worktree shares the repository's branches.
+ */
+export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
+  const fmt = '%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(contents:subject)';
+  const r = await git(['for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads'], dir);
+  if (!r.ok) return [];
+  return r.stdout
+    .split('\n')
+    .filter(Boolean)
+    .map(line => {
+      const [name, upstream, track, subject] = line.split('\u0001');
+      const ahead = Number(track?.match(/ahead (\d+)/)?.[1] || 0);
+      return { name, ahead, pushed: !!upstream, subject: subject || '' };
+    })
+    // Never pushed, or pushed and since moved on.
+    .filter(b => b.name && (!b.pushed || b.ahead > 0))
+    .slice(0, 20);
+}
+
+/**
+ * Pushes one branch using the hub's own GitHub token. Agents commit fine but often can't push:
+ * a sandboxed CLI can't reach the Windows credential store, so the credential helper comes up
+ * empty. The token here is passed to git through the environment and never written to disk.
+ */
+export async function pushBranch(dir: string, branch: string): Promise<string> {
+  const r = await git(['push', '-u', 'origin', `${branch}:${branch}`], dir, true);
+  if (!r.ok) throw new Error(`Pushing ${branch} failed: ${tail(r) || 'exit ' + r.code}`);
+  return branch;
+}
+
 export async function cloneRepo(owner: string, name: string, parent: string): Promise<string> {
   const dest = await joinPath(parent, name);
   must(await git(['clone', remoteUrl(owner, name), dest], parent, true), `Cloning ${owner}/${name}`);

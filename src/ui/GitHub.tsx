@@ -97,6 +97,44 @@ export function RepoPicker({ title, hint, onPick, onClose }: { title: string; hi
   );
 }
 
+/**
+ * Branches with work that hasn't reached GitHub — usually an agent's: they commit fine, but a
+ * sandboxed CLI can't read your saved credentials, so the push fails. The hub has a token that works.
+ */
+function Unpushed({ hub, p }: { hub: Hub; p: Project }) {
+  const [list, setList] = useState<{ name: string; ahead: number; pushed: boolean; subject: string }[]>([]);
+  const [busy, setBusy] = useState('');
+  const load = () => { void hub.listUnpushed(p.id).then(setList); };
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 30_000);
+    return () => window.clearInterval(t);
+  }, [p.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!list.length) return null;
+  const push = async (name: string) => {
+    setBusy(name);
+    await hub.pushOne(p.id, name);
+    setBusy('');
+    load();
+  };
+  return (
+    <div style={{ border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+        {list.length === 1 ? 'A branch has' : `${list.length} branches have`} work that isn't on GitHub yet — including anything an agent committed in its own worktree.
+      </span>
+      {list.map(b => (
+        <div key={b.name} className="row wrap" style={{ gap: 8, justifyContent: 'space-between' }}>
+          <span style={{ minWidth: 0 }}>
+            <span className="mono ellipsis" style={{ display: 'block', fontSize: 12, fontWeight: 600 }}>{b.name}</span>
+            <span className="ellipsis" style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>{b.pushed ? `${b.ahead} commit${b.ahead === 1 ? '' : 's'} ahead · ` : 'never pushed · '}{b.subject}</span>
+          </span>
+          <button className="btn" style={{ padding: '6px 12px', fontSize: 12 }} disabled={!!busy} onClick={() => void push(b.name)}>{busy === b.name ? 'Pushing…' : 'Push'}</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Project → GitHub card: link / create a repo, back up, clone here, auto-backup. */
 export function RepoCard({ hub, p, compact }: { hub: Hub; p: Project; compact?: boolean }) {
   const acct = useGitHubAccount();
@@ -137,6 +175,7 @@ export function RepoCard({ hub, p, compact }: { hub: Hub; p: Project; compact?: 
         </span>
       </div>
       {r.lastError && <div style={{ fontSize: 12, color: 'var(--danger)', lineHeight: 1.4 }}>{r.lastError}</div>}
+      {isDesktop && lf && <Unpushed hub={hub} p={p} />}
       {isDesktop ? (
         lf ? (
           <div className="row wrap" style={{ gap: 8 }}>
