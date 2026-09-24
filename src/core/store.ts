@@ -382,8 +382,9 @@ export function useHub() {
         if (now() - started < CLAIM_MS) return;
         // Nobody took it — the computer went to sleep, or Mosslight isn't open there.
         window.clearInterval(tick);
-        updAgentMsg(key, id, { wantDevice: undefined, queued: false, route: `${routeLabel} · no computer answered` });
-        void dispatch(key, agent, text, routeLabel, [], id).then(resolve);
+        updAgentMsg(key, id, { wantDevice: undefined, queued: false });
+        // Keep "no computer answered" on the finished message, so it's clear why this cost API credit.
+        void dispatch(key, agent, text, `${routeLabel} · no computer answered`, [], id).then(resolve);
       }, 900);
     });
   }, [updAgentMsg]); // eslint-disable-line react-hooks/exhaustive-deps

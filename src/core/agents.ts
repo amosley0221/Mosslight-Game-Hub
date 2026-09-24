@@ -202,9 +202,20 @@ async function callClaudeApi(key: string, model: string, system: string, text: s
   const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, fetch: httpFetch });
   const blocks = await claudeBlocks(files);
   const content = blocks.length ? ([...blocks, { type: 'text', text }] as unknown as Anthropic.ContentBlockParam[]) : text;
-  const stream = client.messages.stream({ model, max_tokens: 16000, system, messages: [{ role: 'user', content }] }, { signal: io.signal });
-  stream.on('text', (_delta, snapshot) => io.onText?.(snapshot));
-  const res = await stream.finalMessage();
+  const body = { model, max_tokens: 16000, system, messages: [{ role: 'user', content }] } as Anthropic.MessageCreateParamsNonStreaming;
+  let res: Anthropic.Message;
+  try {
+    const stream = client.messages.stream(body, { signal: io.signal });
+    stream.on('text', (_delta, snapshot) => io.onText?.(snapshot));
+    res = await stream.finalMessage();
+  } catch (e) {
+    // A dropped connection ends the stream with nothing in it — common on a phone. Ask once
+    // more without streaming rather than losing the whole run.
+    const msg = String((e as Error)?.message || e);
+    if (io.signal?.aborted || !/stream ended|premature close|network|terminated|ECONNRESET|fetch failed/i.test(msg)) throw e;
+    io.onStep?.('Connection dropped — asking again');
+    res = await client.messages.create(body, { signal: io.signal });
+  }
   const tokens = res.usage.input_tokens + res.usage.output_tokens;
   if (res.stop_reason === 'refusal') return { text: 'Claude declined this request.', tokens };
   return { text: res.content.map(b => (b.type === 'text' ? b.text : '')).join(''), tokens };

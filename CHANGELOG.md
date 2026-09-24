@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.29.1] - 2026-09-23
+
+### Fixed
+- **A dropped connection no longer throws away the whole run.** "stream ended without producing a Message with role=assistant" means the stream died mid-flight — common on a phone. Mosslight now asks once more without streaming instead of failing.
+- **A request that fell back to the API says so.** When no computer claims a phone's request, the finished message keeps "no computer answered" in its label, so it's clear why it used API credit.
 ## [0.29.0] - 2026-09-23
 
 ### Added
