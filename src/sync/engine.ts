@@ -111,6 +111,9 @@ export class SyncEngine {
   private async tick(force = false) {
     if (this.busy) { this.again = true; return; }
     this.busy = true;
+    // Say we're still here (throttled inside), so the phone can tell this computer is awake
+    // and hand it work instead of paying for the API.
+    this.touchDevice();
     try {
       for (let attempt = 0; attempt < 4; attempt++) {
         const r = await this.store.read(DOC, force ? undefined : this.etag);
