@@ -1,6 +1,6 @@
 [package]
 name = "mosslight-game-hub"
-version = "0.31.0"
+version = "0.31.1"
 description = "Mosslight Game Hub"
 authors = ["Mosslight Studios"]
 edition = "2021"

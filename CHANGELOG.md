@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.31.1] - 2026-09-24
+
+### Fixed
+- **Engine captures under a review folder still weren't found.** 0.31.0 searched `Tools/RuntimeReviews`, but the file walk prunes any folder named `Saved` — an engine's `Saved/` is mostly cache — and that is exactly where the editor writes its screenshots. Each review folder is now searched in its own right, which is how `Saved/Screenshots/WindowsEditor` becomes reachable. On this project that was most of the captures, not a corner case.
 ## [0.31.0] - 2026-09-24
 
 ### Added

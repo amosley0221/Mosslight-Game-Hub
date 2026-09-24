@@ -21,21 +21,28 @@ const SHOT_DIRS = [
 const MAX_SHOWN = 8;
 
 /**
- * Clones agents make beside the project. A sandboxed agent often can't work inside your checkout,
- * so it clones into Tools/Worktrees — and its captures land there, not where you'd look.
+ * Folders that hold a run of their own, each searched like a little project.
+ *
+ * Two kinds: clones agents make when they can't work inside your checkout (Tools/Worktrees), and
+ * per-review folders an engine writes into (Tools/RuntimeReviews/<name>/Saved/Screenshots/...).
+ * The second kind needs this: the file walk prunes any folder called "saved", because an engine's
+ * Saved/ is mostly cache — but a folder handed in as a root is searched, not pruned.
  */
-async function agentClones(root: string): Promise<string[]> {
+async function extraRoots(root: string): Promise<string[]> {
   const out: string[] = [];
-  for (const parent of ['Tools/Worktrees', 'Worktrees']) {
+  for (const parent of ['Tools/Worktrees', 'Worktrees', 'Tools/RuntimeReviews', 'RuntimeReviews']) {
     const base = await joinPath(root, ...parent.split('/')).catch(() => '');
     if (!base) continue;
     const listing = await scanFolder(base).catch(() => null);
-    for (const child of (listing?.entries || []).filter(e => e.is_dir).slice(0, 12)) {
+    for (const child of (listing?.entries || []).filter(e => e.is_dir).slice(0, 8)) {
       out.push(await joinPath(base, child.name));
     }
   }
-  return out;
+  return out.slice(0, 24);
 }
+
+/** What to look at inside one of those, kept short: every root costs a lookup per folder. */
+const NESTED_DIRS = ['Saved/Screenshots', 'Screenshots', 'Captures', 'Art/Reports'];
 
 /**
  * Images from this run: the ones the agent wrote directly, plus anything new in the capture
@@ -45,8 +52,8 @@ export async function runImages(root: string | undefined, since: number, touched
   const out = new Map<string, number>();
   for (const p of touched) if (isImage(p)) out.set(p, Date.now());
   if (root) {
-    const roots = [root, ...await agentClones(root).catch(() => [])];
-    const found = await Promise.all(roots.flatMap(r => SHOT_DIRS.map(async d => {
+    const pairs: [string, string[]][] = [[root, SHOT_DIRS], ...(await extraRoots(root).catch(() => [])).map(r => [r, NESTED_DIRS] as [string, string[]])];
+    const found = await Promise.all(pairs.flatMap(([r, dirs]) => dirs.map(async d => {
       try {
         const dir = await joinPath(r, ...d.split('/'));
         // A missing folder just throws; that's the common case and costs nothing.
