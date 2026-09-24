@@ -3,10 +3,18 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
-## [0.34.1] - 2026-09-24
+## [0.35.0] - 2026-09-24
+
+(0.34.1 was never released — its build failed, and its fixes are included here.)
+
+### Added
+- **Start a task instead of only listing it.** Next to **Add** on each of the lead's steps there is now **Start**: it makes the task and hands it straight to the agent that owns it. Add still only queues it, because starting everything you note down would be expensive and surprising.
+- **Drag a task into the chat to run it.** Pick one up from Up next and drop it on the message box. It goes to the agent it belongs to, marked **doing** while it runs and **done** when that run succeeds — so it leaves the list on its own. A run you stop, or one that fails, puts the task back to **todo** rather than quietly marking it finished.
+  - The task's card goes with it: the agent is told to read `Docs/Tasks/<card>.md` for the detail behind the one-line title, and to update its status and history when it's done.
 
 ### Fixed
 - **Add on a next step looked like it did nothing.** It did add the task — but Up next only lists five, so with five already there the new one landed below the cut with nothing to say it had arrived. Adding now confirms it, the step turns into "Added ✓" so you can see what you have taken and can't add it twice, Up next shows the open count in its heading, and anything past the fifth is one click away instead of invisible.
+- **Add all would have started runs instead of queueing them.** It passed each step's list position into the "start it now" argument, so every step after the first would have launched immediately. The build caught it before it shipped.
 ## [0.34.0] - 2026-09-24
 
 ### Changed

@@ -214,7 +214,7 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
             <>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginTop: 14, marginBottom: 6, gap: 10 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)' }}>In the order {AGENTS[lead].name} would do them — start with the first.</span>
-                {n.steps.length > 1 && <button className="link" style={{ flex: 'none' }} onClick={() => n.steps.forEach(add)}>Add all</button>}
+                {n.steps.length > 1 && <button className="link" style={{ flex: 'none' }} onClick={() => n.steps.forEach(s => add(s))}>Add all</button>}
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
                 {n.steps.map((s, i) => (
