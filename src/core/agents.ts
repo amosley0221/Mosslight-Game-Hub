@@ -622,6 +622,9 @@ Rules:
 Reply with at most ${how === 'brief' ? 120 : 200} words of prose — the reasoning, not a restatement of the state.
 ${how === 'brief' ? '' : 'Write it so someone who did not run the commands can follow: say what a term means as you use it, and never leave a bare branch name, commit id or card id without saying what it is and why it matters.'}
 Then append up to 4 lines exactly: TASK: [<grok|codex|claude>] <one concrete next step>
+Put them in the order they should be done, not in the order you thought of them. The first line is the one to start now:
+the thing that unblocks the others, or that would be wasted work if left until later. If one step must finish before
+another can begin, they must be adjacent and in that order, and the prose above should say which blocks which.
 Nothing else. No headings, no preamble.`;
 }
 

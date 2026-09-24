@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.34.0] - 2026-09-24
+
+### Changed
+- **The lead's next steps are now in the order to do them.** Nothing asked for an order before, so the list came out in whatever order the lead happened to reason — sensible by luck, not by rule. It is now told to lead with the step that unblocks the others or that would be wasted work if left until later, to keep steps that depend on each other adjacent and in sequence, and to say in the prose which one blocks which.
+- **The card shows that order.** Steps are numbered, the first is emphasised as the one to start now, and **Add all** takes them in order. Adding one at a time still works — take the first, leave the rest until it's done.
 ## [0.33.1] - 2026-09-24
 
 ### Fixed

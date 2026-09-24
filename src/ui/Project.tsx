@@ -205,17 +205,24 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
         <>
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.65, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{n.text}</p>
           {!!n.steps.length && (
-            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
-              {n.steps.map((s, i) => (
-                <div key={i} className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'space-between', background: 'var(--well)', borderRadius: 10, padding: '8px 10px' }}>
-                  <span className="row" style={{ gap: 8, alignItems: 'center', minWidth: 0 }}>
-                    <Dot color={ACTIONS[s.agent || lead]} />
-                    <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{s.title}</span>
-                  </span>
-                  <button className="link" style={{ flex: 'none' }} onClick={() => add(s)}>Add</button>
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginTop: 14, marginBottom: 6, gap: 10 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>In the order {AGENTS[lead].name} would do them — start with the first.</span>
+                {n.steps.length > 1 && <button className="link" style={{ flex: 'none' }} onClick={() => n.steps.forEach(add)}>Add all</button>}
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {n.steps.map((s, i) => (
+                  <div key={i} className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'space-between', background: 'var(--well)', borderRadius: 10, padding: '8px 10px' }}>
+                    <span className="row" style={{ gap: 8, alignItems: 'center', minWidth: 0 }}>
+                      <span className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', width: 14, flex: 'none', textAlign: 'right' }}>{i + 1}</span>
+                      <Dot color={ACTIONS[s.agent || lead]} />
+                      <span style={{ fontSize: 12.5, color: i === 0 ? 'var(--text)' : 'var(--text-2)', fontWeight: i === 0 ? 600 : 400 }}>{s.title}</span>
+                    </span>
+                    <button className="link" style={{ flex: 'none' }} onClick={() => add(s)}>Add</button>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </>
       ) : (
