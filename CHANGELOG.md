@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.34.1] - 2026-09-24
+
+### Fixed
+- **Add on a next step looked like it did nothing.** It did add the task — but Up next only lists five, so with five already there the new one landed below the cut with nothing to say it had arrived. Adding now confirms it, the step turns into "Added ✓" so you can see what you have taken and can't add it twice, Up next shows the open count in its heading, and anything past the fifth is one click away instead of invisible.
 ## [0.34.0] - 2026-09-24
 
 ### Changed

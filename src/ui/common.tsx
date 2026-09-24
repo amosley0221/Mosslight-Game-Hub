@@ -157,3 +157,6 @@ export function RichText({ text, style }: { text: string; style?: CSSProperties 
     </div>
   );
 }
+
+/** Drag payload for a task dropped into the chat composer: the task's id. */
+export const TASK_DRAG = 'application/x-mosslight-task';

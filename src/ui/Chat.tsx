@@ -6,7 +6,7 @@ import type { AgentId, Attachment, Message, PlanStep } from '../core/types';
 import { attachmentBytes } from '../core/attachments';
 import { fmtSize } from '../core/util';
 import { deviceId } from '../sync/device';
-import { Glyph, RichText, Typing } from './common';
+import { Glyph, RichText, TASK_DRAG, Typing } from './common';
 import { useImageSrc } from '../sync/images';
 
 type AgentMsg = Extract<Message, { type: 'agent' }>;
@@ -306,9 +306,14 @@ export function Composer({ hub, compact }: { hub: Hub; compact?: boolean }) {
   const take = (fl: FileList | null) => { const f = Array.from(fl || []); if (f.length) void hub.attachFiles(f); };
   return (
     <div
-      onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
+      onDragOver={e => { if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes(TASK_DRAG)) { e.preventDefault(); setOver(true); } }}
       onDragLeave={() => setOver(false)}
-      onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); setOver(false); take(e.dataTransfer.files); } }}
+      onDrop={e => {
+        // A task dropped here goes to the agent it belongs to, and is marked done if that run works.
+        const tid = e.dataTransfer.getData(TASK_DRAG);
+        if (tid && ui.view === 'project' && ui.pid) { e.preventDefault(); setOver(false); void hub.runTask(ui.pid, tid); return; }
+        if (e.dataTransfer.files.length) { e.preventDefault(); setOver(false); take(e.dataTransfer.files); }
+      }}
     >
       <div className="row wrap" style={{ gap: 6, marginBottom: 8 }}>
         {picks.map(a => {

@@ -968,6 +968,31 @@ export function useHub() {
     if (announce) toast(`${cards.length} card${cards.length === 1 ? '' : 's'} in Docs/Tasks${added ? ` · ${added} new here` : ''}${moved ? ` · ${moved} status change${moved === 1 ? '' : 's'}` : ''}${missing.length ? ` · wrote ${missing.length}` : ''}`);
   }, [saveCard, toast, updProj]);
 
+  /**
+   * Hand a task to the agent it belongs to and mark it done when that run succeeds.
+   *
+   * A task sitting in a list is a note to yourself; this is the step that makes it work. The card
+   * path goes with it, because the card holds the detail the one-line title doesn't.
+   */
+  const runTask = useCallback(async (pid: string, tid: string) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    const t = p?.tasks.find(x => x.id === tid);
+    if (!p || !t) return;
+    if (t.status === 'doing') { toast(`${AGENTS[t.agent].name} is already on "${t.title}"`); return; }
+    updProj(pid, q => ({ ...q, tasks: q.tasks.map(x => (x.id === tid ? { ...x, status: 'doing' as const } : x)), activity: [A(t.agent, 'Started ' + t.title), ...q.activity] }));
+    const text = t.card
+      ? `${t.title}\n\nThis is an open task from the project's list. Its card is ${t.card} — read it first for the detail behind this one line, and update its status and ## History when you're done.`
+      : `${t.title}\n\nThis is an open task from the project's list.`;
+    const res = await dispatch(pid, t.agent, text, 'from Up next').catch(() => null);
+    // Stopped or failed, it's still outstanding — putting it back beats a list that lies.
+    const finished = !!res && !res.stopped && !res.error && !res.offline;
+    updProj(pid, q => ({
+      ...q,
+      tasks: q.tasks.map(x => (x.id === tid ? { ...x, status: (finished ? 'done' : 'todo') as typeof x.status } : x)),
+      activity: finished ? [A(t.agent, 'Completed ' + t.title), ...q.activity] : q.activity,
+    }));
+  }, [dispatch, toast, updProj]);
+
   const cycleTask = useCallback((pid: string, tid: string) => {
     let changed: { task: Task; from: TaskStatus } | null = null;
     updProj(pid, p => {
@@ -1758,7 +1783,7 @@ export function useHub() {
     data, settings, ui, proj, chatKey,
     patchUi, toast, updProj, updSettings, setData,
     send, ask, dispatch, attachFiles, removeAttachment, reroute, approve, decline, choose, toggleOverride, draftSection, stopRun, runPlan, declinePlan,
-    cycleTask, createProject, removeProject, openFolder,
+    cycleTask, runTask, createProject, removeProject, openFolder,
     launch, launchable, deviceName, addBuild, removeBuild, setCoverImage, setArtImage, setCoverFrom, clearCover, setFeaturedBuild, setSummary,
     addLoadingScreen, wireLoadingScreen, rescanBuilds, scanningBuilds, refreshBrief, syncCards, addArtImages,
     shareArt, unshareArt, shareDoc, shareTrack, sharing, clearSpotlight,

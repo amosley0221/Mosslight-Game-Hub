@@ -9,7 +9,7 @@ import { RepoCard } from './GitHub';
 import { ArtTab, useProjectImages } from './Media';
 import { StoryTab } from './Story';
 import { MusicTab } from './Music';
-import { Dot, Glyph, asset, coverOf } from './common';
+import { Dot, Glyph, TASK_DRAG, asset, coverOf } from './common';
 import { deviceId } from '../sync/device';
 import { useImageSrc } from '../sync/images';
 import { TagPicks, launchProps, recommend, tileInfo } from './Library';
@@ -190,9 +190,15 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
   const lead = hub.settings.lead ?? 'codex';
   if (lead === 'off' || !isDesktop || !p.folder?.path) return null;
   const n = p.next;
-  const add = (t: { title: string; agent?: AgentId }) => {
+  // Up next shows five, so a new task can land below the fold with nothing to say it arrived.
+  const already = (title: string) => p.tasks.some(t => t.title === title && t.status !== 'done');
+  const add = (t: { title: string; agent?: AgentId }, start = false) => {
+    if (already(t.title)) return;
     const a = t.agent || lead;
-    hub.updProj(p.id, q => ({ ...q, tasks: [...q.tasks, T(a, t.title, 'todo', 0)], activity: [A(a, 'Task added: ' + t.title), ...q.activity] }));
+    const task = T(a, t.title, 'todo', 0);
+    hub.updProj(p.id, q => ({ ...q, tasks: [...q.tasks, task], activity: [A(a, 'Task added: ' + t.title), ...q.activity] }));
+    if (start) void hub.runTask(p.id, task.id);
+    else hub.toast(`Added to Up next for ${AGENTS[a].name}`);
   };
   const look = async () => { setBusy(true); try { await hub.reviewNext(p.id, true); } finally { setBusy(false); } };
   return (
@@ -218,7 +224,14 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
                       <Dot color={ACTIONS[s.agent || lead]} />
                       <span style={{ fontSize: 12.5, color: i === 0 ? 'var(--text)' : 'var(--text-2)', fontWeight: i === 0 ? 600 : 400 }}>{s.title}</span>
                     </span>
-                    <button className="link" style={{ flex: 'none' }} onClick={() => add(s)}>Add</button>
+                    {already(s.title)
+                      ? <span style={{ flex: 'none', fontSize: 11.5, color: 'var(--muted)' }}>Added ✓</span>
+                      : (
+                        <span className="row" style={{ gap: 12, flex: 'none' }}>
+                          <button className="link" onClick={() => add(s)}>Add</button>
+                          <button className="link" title={`${AGENTS[s.agent || lead].name} starts on it now`} onClick={() => add(s, true)}>Start</button>
+                        </span>
+                      )}
                   </div>
                 ))}
               </div>
@@ -388,7 +401,8 @@ export function Project({ hub, p }: { hub: Hub; p: P }) {
 }
 
 function Overview({ hub, p }: { hub: Hub; p: P }) {
-  const upNext = p.tasks.filter(x => x.status !== 'done').sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1)).slice(0, 5);
+  const open = p.tasks.filter(x => x.status !== 'done').sort((a, b) => (a.status === 'doing' ? 0 : 1) - (b.status === 'doing' ? 0 : 1));
+  const upNext = open.slice(0, 5);
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
       <EngineSlot />
@@ -401,15 +415,24 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
         <RepoCard hub={hub} p={p} />
       </section>
       <section className="card" style={{ padding: 18 }}>
-        <h3 className="eyebrow" style={{ marginBottom: 14 }}>Up next</h3>
+        <h3 className="eyebrow" style={{ marginBottom: 14 }}>Up next{open.length ? ` · ${open.length}` : ''}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {upNext.map(x => (
-            <button key={x.id} onClick={() => hub.cycleTask(p.id, x.id)} className="row hover-line" style={{ gap: 10, textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', fontSize: 13 }}>
+            <button key={x.id} onClick={() => hub.cycleTask(p.id, x.id)} className="row hover-line"
+              draggable
+              title="Click to change its status, or drag it into the chat to start it"
+              onDragStart={e => { e.dataTransfer.setData(TASK_DRAG, x.id); e.dataTransfer.effectAllowed = 'move'; }}
+              style={{ gap: 10, textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', fontSize: 13 }}>
               <Glyph agent={x.agent} size={22} />
               <span style={{ flex: 1 }}>{x.title}</span>
               <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{x.status}</span>
             </button>
           ))}
+          {open.length > upNext.length && (
+            <button className="link" style={{ alignSelf: 'flex-start', fontSize: 12 }} onClick={() => hub.patchUi({ tab: 'tasks' })}>
+              {open.length - upNext.length} more →
+            </button>
+          )}
           {!upNext.length && <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>All tasks done. Ask for the next milestone in chat.</p>}
         </div>
         <button onClick={() => hub.ask(`Given the open tasks on ${p.name}, what should we tackle next and who should own it?`)} style={{ marginTop: 14, width: '100%', background: 'none', border: '1px dashed var(--line-3)', color: 'var(--accent)', borderRadius: 10, padding: 9, fontSize: 12, fontWeight: 600 }}>Ask what to tackle next →</button>
