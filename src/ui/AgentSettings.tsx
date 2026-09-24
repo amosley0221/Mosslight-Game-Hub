@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AGENTS, ORDER } from '../core/constants';
 import { AGENT_KEY, listModels, localClis } from '../core/agents';
 import type { Hub } from '../core/store';
-import type { AgentId, AgentMode } from '../core/types';
+import type { AgentId, AgentMode, Explain } from '../core/types';
 import { isDesktop } from '../platform';
 import { Glyph, Switch } from './common';
 
@@ -123,6 +123,17 @@ export function AgentSettings({ hub, keys, onAddKey }: { hub: Hub; keys: Record<
           </div>
           <select value={settings.teamLead || 'codex'} onChange={e => updSettings(s => ({ ...s, teamLead: e.target.value as AgentId }))} style={{ background: 'var(--panel)', border: '1px solid var(--line-2)', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}>
             {ORDER.map(a => <option key={a} value={a}>{AGENTS[a].name}</option>)}
+          </select>
+        </div>
+        <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>How much they explain</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Agents report in the vocabulary of your repo and engine, which is exact and hard to read if you didn't run the command. Plain language asks them to say what each term means as they use it, what they checked versus guessed, and what you need to do.</div>
+          </div>
+          <select value={settings.explain ?? 'plain'} onChange={e => updSettings(s => ({ ...s, explain: e.target.value as Explain }))} style={{ background: 'var(--panel)', border: '1px solid var(--line-2)', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}>
+            <option value="brief">Short and technical</option>
+            <option value="plain">Plain language</option>
+            <option value="full">Full reasoning</option>
           </select>
         </div>
         {isDesktop && (

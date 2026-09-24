@@ -1,5 +1,7 @@
 export type AgentId = 'grok' | 'codex' | 'claude';
 export type AgentMode = 'auto' | 'local' | 'remote';
+/** How much an agent explains itself: short and technical, plain language, or the full reasoning. */
+export type Explain = 'brief' | 'plain' | 'full';
 export type Platform = 'windows' | 'mac' | 'android' | 'web';
 export type TaskStatus = 'todo' | 'doing' | 'done';
 export type BuildKind = 'desktop' | 'web' | 'android';
@@ -223,6 +225,8 @@ export interface Settings {
   teamLead?: AgentId;
   /** Agent that keeps a standing read of each project. 'off' = nobody; unset = codex. */
   lead?: AgentId | 'off';
+  /** How much the agents explain themselves. Unset means 'plain'. */
+  explain?: Explain;
   device: { name: string; paired: boolean };
   tools: Record<string, boolean>;
   libraryDir?: string;

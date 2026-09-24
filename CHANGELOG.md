@@ -3,6 +3,12 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.33.0] - 2026-09-24
+
+### Added
+- **Agents now explain themselves, instead of reporting.** They work in your repository and answered in its vocabulary — branch heads, merge blockers, untracked copies — which is exact and unreadable if you didn't run the command yourself. They are now asked to say what a term means as they use it, never to leave a bare commit hash, branch or card id without saying what it is and why it matters, to separate what they checked from what they're guessing, to say what you need to do, and to use a table when comparing more than two things. Mistakes are reported in a fixed order: what happened, what caused it, whether anything was lost, what fixes it.
+  - The old 170-word cap was most of the problem — there wasn't room to explain anything. Plain language allows 350 words, and full reasoning 600 with the evidence shown.
+  - Settings → Agents → **How much they explain**: short and technical, plain language (the new default), or full reasoning.
 ## [0.32.0] - 2026-09-24
 
 ### Fixed
