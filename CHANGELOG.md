@@ -3,6 +3,14 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.29.0] - 2026-09-23
+
+### Added
+- **The phone hands work to your computer.** Send from Android while the desktop is awake and Mosslight is open there, and the computer runs it — on Claude Code and Codex CLI, billed to your plans — instead of the phone calling the APIs. No setup, nothing to press: the request goes through your own sync repo, the computer claims it, and the steps and reply stream back to the phone as they happen.
+  - The message says **Waiting for Windows PC to pick this up…**, then shows the run live with its steps.
+  - **If no computer answers within 25 seconds** — asleep, or Mosslight closed — the phone runs it on the API as before, and the message says so.
+  - Devices now report in every few minutes rather than hourly, so "awake" means the last 8 minutes.
+  - Messages with attachments still run on the phone, since the files are there.
 ## [0.28.0] - 2026-09-23
 
 ### Fixed

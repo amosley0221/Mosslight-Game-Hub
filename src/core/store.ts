@@ -138,6 +138,10 @@ const slug =(s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 /** "MosslightVillage.exe" → "MosslightVillage" (build names read better without the extension). */
 /** Files a project uses to tell agents how to work on it, best first. */
 const BRIEF_FILES = ['AGENTS.md', 'CLAUDE.md', 'Docs/PROJECT-HANDOFF.md', 'PROJECT-HANDOFF.md', 'docs/PROJECT-HANDOFF.md', '.github/copilot-instructions.md'];
+/** A computer heard from this recently can be handed work from the phone. */
+const AWAKE_MS = 8 * 60_000;
+/** How long the phone waits for one to claim a request before running it itself. */
+const CLAIM_MS = 25_000;
 const BRIEF_PER_FILE = 6000;
 const BRIEF_TOTAL = 9000;
 const stripExt = (n: string) => n.replace(/\.[^.]+$/, '');
@@ -277,6 +281,8 @@ export function useHub() {
   const running = useRef(0);
   const liveRuns = useRef(new Map<string, { ctrl: AbortController; runId: string }>());
   const skipped = useRef(new Set<string>());
+  /** Requests this computer has already taken from another device. */
+  const claimed = useRef(new Set<string>());
   const setRunning = (delta: number) => { running.current += delta; patchUi({ busy: running.current > 0 }); };
 
   /** Applies a finished reply's side effects (tasks, art, builds, code, usage) to the project. */
@@ -346,6 +352,42 @@ export function useHub() {
     return out;
   }, []);
 
+  /** A computer that's been heard from in the last few minutes, so it can take work from here. */
+  const awakeDesktop = useCallback(() => {
+    const devs = Object.entries(dataRef.current.devices || {});
+    const fresh = devs
+      .filter(([id, d]) => id !== deviceId && d.os !== 'android' && now() - d.lastSeen < AWAKE_MS)
+      .sort((a, b) => b[1].lastSeen - a[1].lastSeen);
+    return fresh[0]?.[0] || null;
+  }, []);
+
+  /**
+   * Waits for the computer to claim the request and finish it. Everything arrives through sync —
+   * the steps, the reply, the usage. If nothing picks it up, this device runs it after all.
+   */
+  const waitForRemote = useCallback((key: string, id: string, agent: AgentId, text: string, routeLabel: string): Promise<Reply & { messageId: string }> => {
+    const find = () => (dataRef.current.messages[key] || []).find(m => m.id === id) as Extract<Message, { type: 'agent' }> | undefined;
+    const started = now();
+    return new Promise(resolve => {
+      const tick = window.setInterval(() => {
+        const m = find();
+        if (!m) { window.clearInterval(tick); resolve({ text: '', tokens: 0, messageId: id, stopped: true }); return; }
+        if (!m.pending) {
+          window.clearInterval(tick);
+          resolve({ text: m.text, tokens: 0, messageId: id, error: m.error, stopped: m.stopped });
+          return;
+        }
+        // Claimed and working: let it run as long as it needs.
+        if (m.runDevice) return;
+        if (now() - started < CLAIM_MS) return;
+        // Nobody took it — the computer went to sleep, or Mosslight isn't open there.
+        window.clearInterval(tick);
+        updAgentMsg(key, id, { wantDevice: undefined, queued: false, route: `${routeLabel} · no computer answered` });
+        void dispatch(key, agent, text, routeLabel, [], id).then(resolve);
+      }, 900);
+    });
+  }, [updAgentMsg]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /**
    * A notification for the moments that need you. Runs take minutes, so the app is usually
    * behind something else by then — but never notify about what's already on screen.
@@ -362,10 +404,19 @@ export function useHub() {
    * Sends a request to one agent. Shows live progress (streamed text, steps, timer) while it runs,
    * waits in that agent's queue if it's busy, and resolves with the final reply.
    */
-  const dispatch = useCallback((key: string, agent: AgentId, text: string, routeLabel: string, files: Attachment[] = []): Promise<Reply & { messageId: string }> => {
-    const id = uid();
+  const dispatch = useCallback((key: string, agent: AgentId, text: string, routeLabel: string, files: Attachment[] = [], existingId?: string): Promise<Reply & { messageId: string }> => {
+    const id = existingId || uid();
     const busyAhead = !!queues.current[agent];
-    push(key, { id, type: 'agent', agent, text: '', pending: true, queued: busyAhead, route: routeLabel, userText: text });
+
+    // From the phone: hand the work to a computer that's awake, so it runs on the CLIs and your
+    // plan instead of the API. Attachments stay on this device, so those still run here.
+    const host = !existingId && !isDesktop && !files.length ? awakeDesktop() : null;
+    if (host) {
+      push(key, { id, type: 'agent', agent, text: '', pending: true, queued: true, route: `${routeLabel} · ${deviceName(host)}`, userText: text, wantDevice: host });
+      return waitForRemote(key, id, agent, text, routeLabel);
+    }
+
+    if (!existingId) push(key, { id, type: 'agent', agent, text: '', pending: true, queued: busyAhead, route: routeLabel, userText: text });
     // Teammates are told about this while it runs, so nobody takes the same job twice.
     beginRun({ id, agent, key, prompt: text, queued: busyAhead, at: now() });
 
@@ -455,6 +506,23 @@ export function useHub() {
     if (r) { r.ctrl.abort(); void cancelAgentRun(r.runId); toast(`Stopping ${AGENTS[m.agent].name}…`); return; }
     if (m.queued) { skipped.current.add(m.id); updAgentMsg(key, m.id, { text: 'Cancelling…' }); }
   }, [toast, updAgentMsg]);
+
+  /**
+   * This computer takes requests the phone addressed to it: claim one (so two computers can't
+   * both run it), then run it here with the local CLIs. Steps and the reply sync back.
+   */
+  useEffect(() => {
+    if (!isDesktop) return;
+    for (const [key, list] of Object.entries(data.messages)) {
+      for (const m of list) {
+        if (m.type !== 'agent' || !m.pending || m.runDevice || m.wantDevice !== deviceId) continue;
+        if (claimed.current.has(m.id)) continue;
+        claimed.current.add(m.id);
+        updAgentMsg(key, m.id, { wantDevice: undefined, queued: true, route: `${m.route} · claimed` });
+        void dispatch(key, m.agent, m.userText || m.text, m.route || 'from your phone', [], m.id);
+      }
+    }
+  }, [data.messages, dispatch, updAgentMsg]);
 
   // Requests that were running when the app closed can't finish — mark them.
   useEffect(() => {

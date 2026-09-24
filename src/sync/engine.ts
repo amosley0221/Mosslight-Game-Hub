@@ -92,7 +92,9 @@ export class SyncEngine {
   private touchDevice() {
     const local = this.getLocal();
     const me = local.devices?.[deviceId];
-    if (me && me.name === getDeviceName() && Date.now() - me.lastSeen < 3600e3) return;
+    // A few minutes, not an hour: the phone decides whether this computer is awake enough to
+    // hand work to, and a stale heartbeat means it falls back to the API.
+    if (me && me.name === getDeviceName() && Date.now() - me.lastSeen < 180e3) return;
     this.applyRemote({ ...local, devices: { ...(local.devices || {}), [deviceId]: { name: getDeviceName(), os: deviceOs, lastSeen: Date.now() } } });
   }
 

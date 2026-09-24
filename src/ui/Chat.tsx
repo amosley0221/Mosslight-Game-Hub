@@ -79,7 +79,7 @@ function RunProgress({ hub, chatKey, m, compact }: { hub: Hub; chatKey: string; 
       <div style={{ margin: '2px 0 6px', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line-2)', background: 'var(--surface)' }}>
         <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
           <span className="row" style={{ gap: 8, fontSize: 11, color: 'var(--muted)' }}>
-            {m.queued ? <>Waiting for {a.name} to finish an earlier request…</> : <><Typing color={a.color} /> Working{m.startedAt ? <> · <Elapsed since={m.startedAt} /></> : null}{!mine ? ' · on another device' : ''}</>}
+            {m.wantDevice ? <>Waiting for {hub.deviceName(m.wantDevice)} to pick this up…</> : m.queued ? <>Waiting for {a.name} to finish an earlier request…</> : <><Typing color={a.color} /> Working{m.startedAt ? <> · <Elapsed since={m.startedAt} /></> : null}{!mine ? ' · on another device' : ''}</>}
           </span>
           {mine && <button onClick={() => hub.stopRun(chatKey, m)} style={{ background: 'none', border: '1px solid var(--line-3)', color: 'var(--text-2)', borderRadius: 6, padding: '2px 10px', fontSize: 11, fontWeight: 600, minHeight: compact ? 32 : undefined }}>{m.queued ? 'Cancel' : 'Stop'}</button>}
         </div>
