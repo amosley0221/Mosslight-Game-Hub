@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.33.1] - 2026-09-24
+
+### Fixed
+- **A branch stayed in the "not on GitHub yet" list after you pushed it.** The list compared against `refs/remotes/origin/*`, which is a local cache of the last fetch rather than GitHub itself — and inside an agent's clone that cache mirrors your project folder, not GitHub at all. The 0.32.0 push fix made it worse: pushing straight to the repo URL leaves the cache untouched, so a successful push changed nothing the list could see. It now asks GitHub what it holds, once per refresh, and compares against that. If GitHub can't be reached it falls back to the cache rather than calling everything unpushed.
 ## [0.33.0] - 2026-09-24
 
 ### Added

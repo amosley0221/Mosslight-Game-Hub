@@ -111,8 +111,24 @@ export async function worktrees(dir: string): Promise<string[]> {
 
 export interface LocalBranch { name: string; ahead: number; pushed: boolean; subject: string; dir: string; from?: string }
 
+/**
+ * What GitHub actually holds right now, asked over the network.
+ *
+ * The alternative is refs/remotes/origin/*, which is a cache of the last fetch — and inside an
+ * agent's clone it mirrors the user's folder rather than GitHub at all. Either way it goes stale
+ * the moment anything is pushed, which shows up as work that stays "not pushed yet" forever.
+ */
+async function remoteHeads(url: string): Promise<Map<string, string> | null> {
+  const r = await git(['ls-remote', '--heads', url], undefined, true);
+  if (!r.ok) return null;
+  return new Map(
+    r.stdout.split('\n').filter(Boolean).map(l => l.split(/\s+/)).filter(p => p.length >= 2)
+      .map(([sha, ref]) => [ref.replace('refs/heads/', ''), sha]),
+  );
+}
+
 /** Branches in one repository that GitHub hasn't seen. */
-async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
+async function branchesIn(dir: string, from?: string, live?: Map<string, string> | null): Promise<LocalBranch[]> {
   // An agent's sandbox runs as another Windows user, so its clone is "dubious ownership" to us.
   // Allowing it for this one command is safer than changing the user's global git config.
   const safe = ['-c', `safe.directory=${dir.replace(/\\/g, '/')}`];
@@ -123,19 +139,22 @@ async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
   for (const candidate of ['refs/remotes/origin/main', 'refs/remotes/origin/master']) {
     if ((await git([...safe, 'rev-parse', '--verify', '--quiet', candidate], dir)).ok) { base = candidate; break; }
   }
-  const fmt = `%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(objectname:short)\u0001${base ? `%(ahead-behind:${base})` : ''}\u0001%(contents:subject)`;
+  const fmt = `%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(objectname)\u0001${base ? `%(ahead-behind:${base})` : ''}\u0001%(contents:subject)`;
   const r = await git([...safe, 'for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads'], dir);
   if (!r.ok) return [];
 
-  // A branch fetched by hand has no upstream configured, so ask what origin actually has
-  // rather than reporting work as unpushed when GitHub already holds it.
-  const remote = await git([...safe, 'for-each-ref', '--format=%(refname:short)\u0001%(objectname:short)', 'refs/remotes/origin'], dir);
-  const onRemote = new Map(
-    (remote.ok ? remote.stdout.split('\n') : [])
-      .filter(Boolean)
-      .map(l => l.split('\u0001'))
-      .map(([ref, sha]) => [ref.replace(/^origin\//, ''), sha]),
-  );
+  // What GitHub holds. `live` is the real answer; the cached refs are the fallback for when we
+  // can't reach it — stale, but better than calling everything unpushed.
+  let onRemote = live;
+  if (!onRemote) {
+    const remote = await git([...safe, 'for-each-ref', '--format=%(refname:short)\u0001%(objectname)', 'refs/remotes/origin'], dir);
+    onRemote = new Map(
+      (remote.ok ? remote.stdout.split('\n') : [])
+        .filter(Boolean)
+        .map(l => l.split('\u0001'))
+        .map(([ref, sha]) => [ref.replace(/^origin\//, ''), sha]),
+    );
+  }
 
   return r.stdout
     .split('\n')
@@ -145,8 +164,11 @@ async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
       const ahead = Number(track?.match(/ahead (\d+)/)?.[1] || 0);
       // "<ahead> <behind>" against the default branch; without a base, assume it has something.
       const own = base ? Number(aheadBehind?.trim().split(/\s+/)[0] || 0) : 1;
-      const there = onRemote.get(name);
-      return { name, ahead: ahead || own, pushed: !!upstream || there === sha, subject: subject || '', dir, from, sha, sameAsRemote: there === sha, own };
+      const there = onRemote!.get(name);
+      // With a live answer, being on GitHub is the only thing that counts — an upstream setting is
+      // just local config, and a branch can have one without GitHub having the commits.
+      const pushed = live ? there === sha : !!upstream || there === sha;
+      return { name, ahead: ahead || own, pushed, subject: subject || '', dir, from, sha, sameAsRemote: there === sha, own };
     })
     // Worth showing only when it holds work of its own that GitHub doesn't already have.
     .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && !b.sameAsRemote && b.own > 0)
@@ -158,8 +180,10 @@ async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
  * it. A sandboxed agent often can't create a worktree inside your repo (it runs as a different
  * user), so it clones into Tools/Worktrees and commits there — invisible from the main checkout.
  */
-export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
-  const out = await branchesIn(dir);
+export async function unpushedBranches(dir: string, url?: string): Promise<LocalBranch[]> {
+  // One network call for the whole project: every clone is measured against the same live answer.
+  const live = url ? await remoteHeads(url).catch(() => null) : null;
+  const out = await branchesIn(dir, undefined, live);
   const seen = new Set(out.map(b => b.name));
   // Where agents put their clones. Deliberately not all of Tools/ — that can hold hundreds of
   // folders, and listing each one to look for .git would cost more than this is worth.
@@ -170,7 +194,7 @@ export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
       const path = await joinPath(base, child.name);
       const inner = await scanFolder(path).catch(() => null);
       if (!inner?.entries.some(e => e.name === '.git')) continue;
-      for (const b of await branchesIn(path, `${parent}/${child.name}`)) {
+      for (const b of await branchesIn(path, `${parent}/${child.name}`, live)) {
         if (seen.has(b.name)) continue;
         seen.add(b.name);
         out.push(b);

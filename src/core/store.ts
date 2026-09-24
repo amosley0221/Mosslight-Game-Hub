@@ -1028,7 +1028,7 @@ export function useHub() {
     const p = dataRef.current.projects.find(x => x.id === pid);
     const path = p && localFolder(p)?.path;
     if (!isDesktop || !path || !p.repo) return [];
-    return unpushedBranches(path).catch(() => []);
+    return unpushedBranches(path, githubUrl(p.repo.owner, p.repo.name)).catch(() => []);
   }, []);
 
   /**
