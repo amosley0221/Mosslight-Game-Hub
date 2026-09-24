@@ -128,6 +128,18 @@ export function AgentSettings({ hub, keys, onAddKey }: { hub: Hub; keys: Record<
         {isDesktop && (
           <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
             <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Project lead</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Reads the project when you open it — the folder, the task cards, the branches GitHub hasn't seen — and says what it would do next, without being asked. It only reads; pushing stays yours.</div>
+            </div>
+            <select value={settings.lead ?? 'codex'} onChange={e => updSettings(s => ({ ...s, lead: e.target.value as AgentId | 'off' }))} style={{ background: 'var(--panel)', border: '1px solid var(--line-2)', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}>
+              {ORDER.map(a => <option key={a} value={a}>{AGENTS[a].name}</option>)}
+              <option value="off">Nobody</option>
+            </select>
+          </div>
+        )}
+        {isDesktop && (
+          <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+            <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>Let Claude Code run commands</div>
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>Local Claude Code can always edit project files. Turn this on to also let it run builds and tests without asking. (Codex runs commands inside its own sandbox.)</div>
             </div>

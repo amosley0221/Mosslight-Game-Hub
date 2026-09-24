@@ -559,6 +559,41 @@ export async function respond(agent: AgentId, text: string, proj: Project | null
   return { ...res, tokens: raw.tokens, via: raw.via };
 }
 
+/**
+ * The lead's standing read of the project: what it would do next, without being asked.
+ *
+ * The point is that it answers from real state — branch heads, task cards, what is running — not
+ * from what the hub happens to be showing. An agent shown a screenshot guesses; this one reads.
+ */
+export function leadPrompt(lead: AgentId, proj: Project | null, local: boolean, state: string[]): string {
+  return `You are ${AGENTS[lead].name}, the standing lead for this project in a multi-agent game dev hub. ${TEAM}
+${projectContext(proj)}${state.length ? '\n' + state.join('\n') : ''}
+${local ? `
+Look at the project before you answer. Read (read-only — change nothing, run no builds, start no engine):
+- AGENTS.md or CLAUDE.md at the root: standing instructions from the user, which outrank this prompt.
+- the docs folder: task cards, handoffs, recent reports.
+- recent git history on the branches listed above, so you describe what is actually on them.
+` : ''}
+Say what you would do next and why. Be specific to this project's real state: name branches, files and cards.
+Rules:
+- Do not propose work that is already underway or already finished. An empty field in the hub is not evidence the work doesn't exist.
+- Do not propose anything that needs GitHub: you cannot reach it. Pushing is the user's button. You may say a branch is ready to push and leave it there.
+- Say plainly when you are unsure rather than guessing, and say what you would read to find out.
+Reply with at most 120 words of prose — the reasoning, not a restatement of the state.
+Then append up to 4 lines exactly: TASK: [<grok|codex|claude>] <one concrete next step>
+Nothing else. No headings, no preamble.`;
+}
+
+/** Runs that review. Returns the prose and the steps it proposed. */
+export async function leadReview(lead: AgentId, proj: Project | null, settings: Settings, state: string[], io: RunIO = {}): Promise<{ text: string; tasks: { title: string; agent?: AgentId }[]; tokens: number } | { error: string }> {
+  const raw = await runAgent(lead, 'What would you do next on this project?', proj, settings, io, local => leadPrompt(lead, proj, local, state));
+  if (!raw) return { error: notSetUp(lead, settings).text };
+  if (raw.stopped) return { error: 'Stopped before the lead finished looking.' };
+  const res = parseReply(raw.text, lead, 'next');
+  if (!res.text.trim() && !res.tasks?.length) return { error: `${AGENTS[lead].name} came back empty.` };
+  return { text: res.text.trim(), tasks: res.tasks || [], tokens: raw.tokens };
+}
+
 /** Team mode: the lead agent splits a request into steps for each teammate. */
 export async function planTeam(lead: AgentId, text: string, proj: Project | null, settings: Settings, io: RunIO = {}): Promise<{ summary: string; steps: PlanStep[]; tokens: number } | { error: string }> {
   const raw = await runAgent(lead, text, proj, settings, io, local => planPrompt(lead, proj, local));

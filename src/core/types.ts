@@ -62,6 +62,8 @@ export interface Project {
   brand?: { path: string; device?: string; ts: number; tips?: string[]; wired?: boolean };
   /** A just-arrived build worth pointing at. */
   spotlight?: { buildId: string; ts: number };
+  /** The lead's standing read of the project: what it would do next, and why. */
+  next?: { agent: AgentId; text: string; steps: { title: string; agent?: AgentId }[]; ts: number; device?: string };
   /** Last-modified time, used to merge edits from other devices. */
   u?: number;
 }
@@ -219,6 +221,8 @@ export interface Settings {
   notify?: boolean;
   /** Agent that plans Team requests. */
   teamLead?: AgentId;
+  /** Agent that keeps a standing read of each project. 'off' = nobody; unset = codex. */
+  lead?: AgentId | 'off';
   device: { name: string; paired: boolean };
   tools: Record<string, boolean>;
   libraryDir?: string;

@@ -185,11 +185,21 @@ export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
  * a sandboxed CLI can't reach the Windows credential store, so the credential helper comes up
  * empty. The token here is passed to git through the environment and never written to disk.
  */
-export async function pushBranch(dir: string, branch: string): Promise<string> {
-  const r = await git(['-c', `safe.directory=${dir.replace(/\\/g, '/')}`, 'push', '-u', 'origin', `${branch}:${branch}`], dir, true);
+export async function pushBranch(dir: string, branch: string, url?: string): Promise<string> {
+  // An agent clones from your folder, so "origin" inside its clone is the folder — not GitHub.
+  // Pushing to it there succeeds, moves the branch into your checkout, and never leaves the
+  // machine. When we know the GitHub URL, push to that by name instead of trusting origin.
+  const target = url || 'origin';
+  const safe = ['-c', `safe.directory=${dir.replace(/\\/g, '/')}`];
+  // -u writes a tracking ref, which only means anything when the target is a named remote.
+  const args = url ? [...safe, 'push', target, `${branch}:${branch}`] : [...safe, 'push', '-u', target, `${branch}:${branch}`];
+  const r = await git(args, dir, true);
   if (!r.ok) throw new Error(`Pushing ${branch} failed: ${tail(r) || 'exit ' + r.code}`);
   return branch;
 }
+
+/** The GitHub URL for a linked repo, so a push can name it instead of relying on `origin`. */
+export const githubUrl = (owner: string, name: string) => remoteUrl(owner, name);
 
 export async function cloneRepo(owner: string, name: string, parent: string): Promise<string> {
   const dest = await joinPath(parent, name);

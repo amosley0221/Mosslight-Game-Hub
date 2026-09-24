@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AGENTS, ENGINE_BY, LIB_HINTS, WEB_ENGINES, engineName, kindOf } from './constants';
-import { planTeam, respond, type Reply } from './agents';
+import { leadReview, planTeam, respond, type Reply } from './agents';
 import { route } from './router';
 import { defaultSettings, emptyData, norm, purgeDemoOnce } from './seed';
 import type { AgentId, AgentMode, Asset, Attachment, Build, HubData, Message, PlanStep, Platform, Project, ProjectDoc, Settings, StoryEntry, StorySection, Task, TaskStatus, Usage } from './types';
@@ -16,11 +16,11 @@ import { merge, toDoc } from '../sync/merge';
 import { setImageStore, uploadFile, uploadImage } from '../sync/images';
 import { installOrLaunch, uploadApk } from '../sync/apk';
 import { createRepo, getRepo, repoSlug, type GhRepo } from '../github/api';
-import { backup, cloneRepo, connectFolder, detectRepo, pushBranch, unpushedBranches } from '../github/git';
+import { backup, cloneRepo, connectFolder, detectRepo, githubUrl, pushBranch, unpushedBranches } from '../github/git';
 import { installKit, kitPrompt } from '../brand/kit';
 import { loadState, readLegacy, saveState } from './storage';
 import { looking, notify } from '../platform/notify';
-import { beginRun, endRun, startRun } from './runs';
+import { anyRunning, beginRun, endRun, startRun } from './runs';
 import { CARD_DIR, cardRelPath, parseCard, writeCard } from './cards';
 import { runImages } from './shots';
 
@@ -142,6 +142,8 @@ const BRIEF_FILES = ['AGENTS.md', 'CLAUDE.md', 'Docs/PROJECT-HANDOFF.md', 'PROJE
 const AWAKE_MS = 8 * 60_000;
 /** How long the phone waits for one to claim a request before running it itself. */
 const CLAIM_MS = 25_000;
+/** How stale the lead's read has to be before opening the project runs it again. */
+const LEAD_EVERY_MS = 6 * 60 * 60_000;
 const BRIEF_PER_FILE = 6000;
 const BRIEF_TOTAL = 9000;
 const stripExt = (n: string) => n.replace(/\.[^.]+$/, '');
@@ -982,6 +984,9 @@ export function useHub() {
   // ── GitHub backups ────────────────────────────────────────────────────────────
   const backingUp = useRef(new Set<string>());
   const backupRef = useRef<(pid: string, reason?: string, silent?: boolean) => Promise<void>>();
+  /** Projects the lead is looking at right now, so opening a tab twice doesn't run it twice. */
+  const leadBusy = useRef(new Set<string>());
+  const reviewNextRef = useRef<(pid: string, announce?: boolean) => Promise<void>>();
   const [busyRepo, setBusyRepo] = useState<string | null>(null);
   const [sharing, setSharing] = useState<{ done: number; total: number } | null>(null);
   const [scanningBuilds, setScanningBuilds] = useState(false);
@@ -1026,12 +1031,49 @@ export function useHub() {
     return unpushedBranches(path).catch(() => []);
   }, []);
 
+  /**
+   * The lead's standing read of the project. Runs on its own when you open a project, and on
+   * demand from the card.
+   *
+   * It is given the branch state rather than left to infer it: an agent shown the hub's own screen
+   * will describe what the screen says, which is how you get advice about work that isn't there.
+   */
+  const reviewNext = useCallback(async (pid: string, announce = false) => {
+    const p = dataRef.current.projects.find(x => x.id === pid);
+    if (!p) return;
+    const lead = settingsRef.current.lead ?? 'codex';
+    if (lead === 'off') { if (announce) toast('No lead is set — pick one in Settings'); return; }
+    if (leadBusy.current.has(pid)) return;
+    leadBusy.current.add(pid);
+    try {
+      const state: string[] = [];
+      const branches = await listUnpushed(pid).catch(() => []);
+      if (branches.length) {
+        state.push('Branches on this computer that GitHub has not seen (commit counts are measured against the default branch, so every one of these holds real work):');
+        for (const b of branches.slice(0, 12)) state.push(`- ${b.name}: ${b.ahead} commit${b.ahead === 1 ? '' : 's'}${b.from ? `, in ${b.from}` : ''} — ${b.subject}`);
+        state.push('Only the user can push these. Do not propose doing it yourself.');
+      } else if (p.repo) {
+        state.push('Every local branch is already on GitHub. Nothing is waiting to be pushed.');
+      }
+      const r = await leadReview(lead, p, settingsRef.current, state);
+      if ('error' in r) { if (announce) toast(r.error); return; }
+      updProj(pid, q => ({ ...q, next: { agent: lead, text: r.text, steps: r.tasks.slice(0, 4), ts: now(), device: deviceId } }));
+      if (announce) toast(`${AGENTS[lead].name} had a look`);
+    } finally {
+      leadBusy.current.delete(pid);
+    }
+  }, [listUnpushed, toast, updProj]);
+  reviewNextRef.current = reviewNext;
+
   const pushOne = useCallback(async (pid: string, branch: string, dir?: string) => {
     const p = dataRef.current.projects.find(x => x.id === pid);
     const path = dir || (p && localFolder(p)?.path);
     if (!path) return;
     try {
-      await pushBranch(path, branch);
+      // Name GitHub explicitly when the branch lives in an agent's clone: that clone's "origin"
+      // is this folder, so pushing to origin there would just move the branch next door.
+      const url = dir && p?.repo ? githubUrl(p.repo.owner, p.repo.name) : undefined;
+      await pushBranch(path, branch, url);
       updProj(pid, q => ({ ...q, activity: [A('codex', `Pushed ${branch} to GitHub`), ...q.activity] }));
       toast(`Pushed ${branch}`);
     } catch (e) {
@@ -1200,6 +1242,18 @@ export function useHub() {
     void refreshBrief(openedPid);
     void syncCards(openedPid);
   }, [openedPid, refreshBrief, syncCards]);
+
+  // The lead looks the project over when you open it — but not on every visit, and never on top of
+  // work in flight: a review that talks over a running agent is worse than no review.
+  useEffect(() => {
+    if (!openedPid || !isDesktop) return;
+    const p = dataRef.current.projects.find(x => x.id === openedPid);
+    if (!p || !localFolder(p)?.path) return;
+    if (p.next && now() - p.next.ts < LEAD_EVERY_MS) return;
+    if (anyRunning()) return;
+    const t = window.setTimeout(() => { if (!anyRunning()) void reviewNextRef.current?.(openedPid); }, 4000);
+    return () => window.clearTimeout(t);
+  }, [openedPid]);
 
   // ── Brand kit (the Mosslight loading screen) ─────────────────────────────────
   /** Writes the loading screen kit into the game's folder on this computer. */
@@ -1712,7 +1766,7 @@ export function useHub() {
     draftSummary, importEntries, autoImportEntries, draftEntries, suggestEntries, proposeBios, addEntries, buildEntry,
     addAssets, toggleAssetLink, removeAsset, setAssetPreview,
     syncState, syncConfig, connectSync, disconnectSync,
-    busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere, listUnpushed, pushOne,
+    busyRepo, backupNow, linkRepo, createRepoFor, unlinkRepo, setRepoAuto, openFromGitHub, cloneHere, listUnpushed, pushOne, reviewNext,
   };
 }
 

@@ -181,6 +181,52 @@ function EngineSlot() {
 }
 
 /** Overview card: the project's own instruction files, which every agent is given. */
+/**
+ * The lead's standing read of the project. It looks when you open the project and holds its answer
+ * until something changes, so the question "what now" has one in waiting rather than needing asking.
+ */
+function NextCard({ hub, p }: { hub: Hub; p: P }) {
+  const [busy, setBusy] = useState(false);
+  const lead = hub.settings.lead ?? 'codex';
+  if (lead === 'off' || !isDesktop || !p.folder?.path) return null;
+  const n = p.next;
+  const add = (t: { title: string; agent?: AgentId }) => {
+    const a = t.agent || lead;
+    hub.updProj(p.id, q => ({ ...q, tasks: [...q.tasks, T(a, t.title, 'todo', 0)], activity: [A(a, 'Task added: ' + t.title), ...q.activity] }));
+  };
+  const look = async () => { setBusy(true); try { await hub.reviewNext(p.id, true); } finally { setBusy(false); } };
+  return (
+    <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
+      <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 10, gap: 10 }}>
+        <h3 className="eyebrow">What's next · {AGENTS[lead].name}{n ? ` · looked ${ago(n.ts)}` : ''}</h3>
+        <button className="link" disabled={busy} onClick={() => void look()}>{busy ? 'Looking…' : n ? 'Look again' : 'Have a look'}</button>
+      </div>
+      {n ? (
+        <>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.65, color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{n.text}</p>
+          {!!n.steps.length && (
+            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+              {n.steps.map((s, i) => (
+                <div key={i} className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'space-between', background: 'var(--well)', borderRadius: 10, padding: '8px 10px' }}>
+                  <span className="row" style={{ gap: 8, alignItems: 'center', minWidth: 0 }}>
+                    <Dot color={ACTIONS[s.agent || lead]} />
+                    <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>{s.title}</span>
+                  </span>
+                  <button className="link" style={{ flex: 'none' }} onClick={() => add(s)}>Add</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--muted)' }}>
+          {AGENTS[lead].name} hasn't looked at this project yet. It reads the folder, the task cards and the branches that aren't on GitHub, then says what it would do next — it can't push, so that stays your call.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function BriefCard({ hub, p }: { hub: Hub; p: P }) {
   const [open, setOpen] = useState(false);
   if (!p.brief && !(isDesktop && p.folder?.path)) return null;
@@ -339,6 +385,7 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
   return (
     <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
       <EngineSlot />
+      <NextCard hub={hub} p={p} />
       <BriefCard hub={hub} p={p} />
       <StoryCard hub={hub} p={p} />
       <BrandCard hub={hub} p={p} />

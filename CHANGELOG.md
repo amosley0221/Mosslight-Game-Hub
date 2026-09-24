@@ -3,6 +3,16 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.32.0] - 2026-09-24
+
+### Fixed
+- **Pushing a branch from an agent's clone never reached GitHub.** An agent clones from your folder, so `origin` inside its clone is the folder — not GitHub. The push succeeded, moved the branch into your checkout, and stopped there, which is why a branch you just pushed kept appearing in the list. Pushes now name the project's GitHub repo instead of trusting `origin`. Nothing was lost: the commits are in your checkout, and pushing again sends them on.
+
+### Added
+- **A project lead.** One agent (Codex by default) reads the project when you open it and says what it would do next, without being asked. It sees the folder, `AGENTS.md`, the task cards and every branch GitHub hasn't seen, with real commit counts — not a screenshot of the hub, which is what an agent shown one will describe. Each step it proposes has an **Add** button to make it a task.
+  - It is told it cannot reach GitHub, so it never proposes pushing. That stays your call.
+  - It looks at most every 6 hours per project, and never while an agent is working.
+  - Settings → Agents → **Project lead** changes who does it, or turns it off.
 ## [0.31.1] - 2026-09-24
 
 ### Fixed
