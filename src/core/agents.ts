@@ -6,6 +6,7 @@ import { detectTools, getSecret, httpFetch, imageDir, isDesktop, joinPath, platf
 import { localFolder } from '../sync/device';
 import { uploadImage } from '../sync/images';
 import { repoContext } from '../github/context';
+import { worktrees } from '../github/git';
 import { claudeBlocks, describeAttachments, openAiBlocks } from './attachments';
 import { engineContext, runsContext } from './runs';
 
@@ -311,10 +312,10 @@ function describeClaudeTool(name: string, input: Record<string, unknown> = {}): 
 }
 
 /** Claude Code in print mode with stream-json output: steps + text as they happen. */
-async function callClaudeCli(system: string, text: string, cwd: string | undefined, model: string | undefined, runCommands: boolean, io: RunIO) {
+async function callClaudeCli(system: string, text: string, cwd: string | undefined, model: string | undefined, runCommands: boolean, extraDirs: string[], io: RunIO) {
   // The context goes in on stdin, not as an argument: a 20KB command line trips antivirus
   // heuristics (Windows Defender kills the process) and Windows caps arguments at ~32KB anyway.
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', ...(runCommands ? ['--allowedTools', 'Bash'] : []), ...(model ? ['--model', model] : [])];
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', ...(runCommands ? ['--allowedTools', 'Bash'] : []), ...extraDirs.flatMap(d => ['--add-dir', d]), ...(model ? ['--model', model] : [])];
   const stdin = `${system}\n\n---\n\n${text}`;
   let final = '', streamed = '', tokens = 0, isError = false, sawJson = false;
   const res = await runAgentCliStream('claude', args, stdin, cwd, io.runId || '', line => {
@@ -492,7 +493,7 @@ async function runAgent(agent: AgentId, text: string, proj: Project | null, sett
     try {
       io.onVia?.('local');
       const r = agent === 'claude'
-        ? await callClaudeCli(sys, body, cwd, lm, !!settings.localCommands, io)
+        ? await callClaudeCli(sys, body, cwd, lm, !!settings.localCommands, cwd ? await worktrees(cwd).catch(() => []) : [], io)
         : await callCodexCli(sys, body, cwd, lm, settings.cliNetwork !== false, io);
       return { ...r, via: 'local' };
     } catch (e) {

@@ -92,6 +92,23 @@ export async function backup(dir: string, message: string, protectBranch?: strin
 }
 
 /** Clone into `<parent>/<name>` and return the new folder. */
+/**
+ * Every checkout of this repository. Isolated work usually lives in a sibling worktree
+ * (`F:/Vacancy-render` beside `F:/Vacancy`), which an agent started in the main folder can't
+ * reach unless it's told about it.
+ */
+export async function worktrees(dir: string): Promise<string[]> {
+  const r = await git(['worktree', 'list', '--porcelain'], dir);
+  if (!r.ok) return [];
+  const here = dir.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
+  return r.stdout
+    .split('\n')
+    .filter(l => l.startsWith('worktree '))
+    .map(l => l.slice(9).trim())
+    .filter(p => p && p.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase() !== here)
+    .slice(0, 24);
+}
+
 export interface LocalBranch { name: string; ahead: number; pushed: boolean; subject: string; dir: string; from?: string }
 
 /** Branches in one repository that GitHub hasn't seen. */

@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.27.0] - 2026-09-23
+
+### Fixed
+- **Claude Code couldn't reach the worktree it was sent to.** Isolated work usually lives in a sibling checkout — `F:/Vacancy-render` beside `F:/Vacancy` — but Mosslight started Claude Code with only the project folder, so it stopped at "write access isn't granted yet" and asked you to run `/add-dir`. Every worktree of the project's repository is now passed to it automatically, so a task that names one can just proceed.
 ## [0.26.2] - 2026-09-23
 
 ### Changed
