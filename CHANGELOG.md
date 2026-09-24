@@ -3,6 +3,12 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.35.2] - 2026-09-24
+
+### Fixed
+- **Start on a next step did nothing.** It created the task, then asked for it by id — but the lookup reads a snapshot taken at render time, which doesn't contain a task added a moment earlier. It found nothing and returned without a word, so the step said "Added ✓" while no agent had been told anything. Start now hands the task over directly, and a lookup that genuinely fails says so instead of failing silently.
+- **A step already added had no way to be started.** "Added ✓" was the end of the row. It now keeps a **Start** button, and shows **Running…** while that task is with its agent.
+- **Dragging a task into the chat did nothing.** The task rows were `<button>` elements, and Chromium won't reliably begin a drag from a button — its own mouse handling takes the gesture first. They are now divs that behave like buttons, keyboard included, and carry the task's title as plain text as well so less fussy drop targets still recognise them.
 ## [0.35.1] - 2026-09-24
 
 ### Fixed

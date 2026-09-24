@@ -191,13 +191,13 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
   if (lead === 'off' || !isDesktop || !p.folder?.path) return null;
   const n = p.next;
   // Up next shows five, so a new task can land below the fold with nothing to say it arrived.
-  const already = (title: string) => p.tasks.some(t => t.title === title && t.status !== 'done');
+  const already = (title: string) => p.tasks.find(t => t.title === title && t.status !== 'done');
   const add = (t: { title: string; agent?: AgentId }, start = false) => {
     if (already(t.title)) return;
     const a = t.agent || lead;
     const task = T(a, t.title, 'todo', 0);
     hub.updProj(p.id, q => ({ ...q, tasks: [...q.tasks, task], activity: [A(a, 'Task added: ' + t.title), ...q.activity] }));
-    if (start) void hub.runTask(p.id, task.id);
+    if (start) void hub.runTask(p.id, task.id, task);
     else hub.toast(`Added to Up next for ${AGENTS[a].name}`);
   };
   const look = async () => { setBusy(true); try { await hub.reviewNext(p.id, true); } finally { setBusy(false); } };
@@ -224,14 +224,22 @@ function NextCard({ hub, p }: { hub: Hub; p: P }) {
                       <Dot color={ACTIONS[s.agent || lead]} />
                       <span style={{ fontSize: 12.5, color: i === 0 ? 'var(--text)' : 'var(--text-2)', fontWeight: i === 0 ? 600 : 400 }}>{s.title}</span>
                     </span>
-                    {already(s.title)
-                      ? <span style={{ flex: 'none', fontSize: 11.5, color: 'var(--muted)' }}>Added ✓</span>
-                      : (
+                    {(() => {
+                      const have = already(s.title);
+                      // Added is not started: an added step still needs a way to be handed over.
+                      if (have) return (
+                        <span className="row" style={{ gap: 12, flex: 'none' }}>
+                          <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{have.status === 'doing' ? 'Running…' : 'Added ✓'}</span>
+                          {have.status !== 'doing' && <button className="link" title={`${AGENTS[have.agent].name} starts on it now`} onClick={() => void hub.runTask(p.id, have.id)}>Start</button>}
+                        </span>
+                      );
+                      return (
                         <span className="row" style={{ gap: 12, flex: 'none' }}>
                           <button className="link" onClick={() => add(s)}>Add</button>
                           <button className="link" title={`${AGENTS[s.agent || lead].name} starts on it now`} onClick={() => add(s, true)}>Start</button>
                         </span>
-                      )}
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -418,15 +426,24 @@ function Overview({ hub, p }: { hub: Hub; p: P }) {
         <h3 className="eyebrow" style={{ marginBottom: 14 }}>Up next{open.length ? ` · ${open.length}` : ''}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {upNext.map(x => (
-            <button key={x.id} onClick={() => hub.cycleTask(p.id, x.id)} className="row hover-line"
+            // A <button> is the obvious element here, but Chromium won't reliably begin a drag
+            // from one — its own mouse handling wins — so this is a div that behaves like a button.
+            <div key={x.id} role="button" tabIndex={0} className="row hover-line"
               draggable
-              title="Click to change its status, or drag it into the chat to start it"
-              onDragStart={e => { e.dataTransfer.setData(TASK_DRAG, x.id); e.dataTransfer.effectAllowed = 'move'; }}
-              style={{ gap: 10, textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', fontSize: 13 }}>
+              title="Click to change its status, or drag it into the chat to hand it to its agent"
+              onClick={() => hub.cycleTask(p.id, x.id)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hub.cycleTask(p.id, x.id); } }}
+              onDragStart={e => {
+                e.dataTransfer.setData(TASK_DRAG, x.id);
+                // Some targets only look at text/plain; the title is a sensible thing to land there.
+                e.dataTransfer.setData('text/plain', x.title);
+                e.dataTransfer.effectAllowed = 'copyMove';
+              }}
+              style={{ gap: 10, textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '10px 12px', fontSize: 13, cursor: 'grab', userSelect: 'none' }}>
               <Glyph agent={x.agent} size={22} />
               <span style={{ flex: 1 }}>{x.title}</span>
               <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{x.status}</span>
-            </button>
+            </div>
           ))}
           {open.length > upNext.length && (
             <button className="link" style={{ alignSelf: 'flex-start', fontSize: 12 }} onClick={() => hub.patchUi({ tab: 'tasks' })}>

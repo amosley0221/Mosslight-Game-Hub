@@ -974,10 +974,12 @@ export function useHub() {
    * A task sitting in a list is a note to yourself; this is the step that makes it work. The card
    * path goes with it, because the card holds the detail the one-line title doesn't.
    */
-  const runTask = useCallback(async (pid: string, tid: string) => {
+  const runTask = useCallback(async (pid: string, tid: string, known?: Task) => {
     const p = dataRef.current.projects.find(x => x.id === pid);
-    const t = p?.tasks.find(x => x.id === tid);
-    if (!p || !t) return;
+    // `known` is for a task created a moment ago: dataRef is assigned during render, so a task
+    // added in this tick isn't in it yet and looking it up would find nothing.
+    const t = known || p?.tasks.find(x => x.id === tid);
+    if (!p || !t) { toast("That task isn't in this project any more"); return; }
     if (t.status === 'doing') { toast(`${AGENTS[t.agent].name} is already on "${t.title}"`); return; }
     updProj(pid, q => ({ ...q, tasks: q.tasks.map(x => (x.id === tid ? { ...x, status: 'doing' as const } : x)), activity: [A(t.agent, 'Started ' + t.title), ...q.activity] }));
     const text = t.card
