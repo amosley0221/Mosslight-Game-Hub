@@ -148,22 +148,27 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
           {/* Landscape shows the whole cover beside the details; portrait keeps it as a banner. */}
           <div style={{ position: 'relative', background: 'var(--well)', flex: 'none', ...(wide ? { height: '100%', overflow: 'hidden' } : { aspectRatio: '16/10' }) }}>
             {wide && cover
-              ? <img src={cover} alt={proj.name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+              // Fills the column: a poster next to a letterboxed strip of its own background
+              // looks like a mistake, and the art is the point of this layout.
+              ? <img src={cover} alt={proj.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               : <ImageSlot src={coverOf(proj)} placeholder="Tap to add cover art" hint="Tap to change cover" onFile={f => void hub.setCoverImage(proj.id, f)} />}
             <button onClick={() => patchUi({ view: 'library', pid: null })} style={{ position: 'absolute', top: 12, left: 12, background: 'var(--chip-bg)', border: '1px solid var(--line-2)', color: 'var(--chip-text)', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 600, minHeight: 32 }}>← Games</button>
           </div>
-          <div ref={wide ? scroller : undefined} style={{ padding: wide ? '14px 18px 24px' : '16px 18px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0, overflow: wide ? 'auto' : undefined }}>
-            {/* flex:none throughout: tall tab content must not squeeze the header or the tabs. */}
-            <div style={{ flex: 'none' }}>
-              <div style={{ fontSize: wide ? 22 : 24, fontWeight: 600, letterSpacing: '-.02em' }}>{proj.name}</div>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)', lineHeight: 1.45 }}>{proj.tagline}</p>
+          {/* Landscape: the title and tabs are a fixed head, and only the tab's own content
+              scrolls — otherwise a long chat rides up over the tabs. */}
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: wide ? 'hidden' : undefined }}>
+            <div style={{ flex: 'none', padding: wide ? '14px 18px 0' : '16px 18px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: wide ? 22 : 24, fontWeight: 600, letterSpacing: '-.02em' }}>{proj.name}</div>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)', lineHeight: 1.45 }}>{proj.tagline}</p>
+              </div>
+              <div>
+                <div className="row" style={{ justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}><span>Progress</span><span className="mono">{tileInfo(proj).done}/{proj.tasks.length}</span></div>
+                <div className="bar" style={{ height: 6, borderRadius: 3 }}>{tileInfo(proj).shares.map(s => <div key={s.a} style={{ height: '100%', width: s.pct, background: AGENTS[s.a].color }} />)}</div>
+              </div>
+              <TabBar tab={tab} onPick={t => patchUi({ tab: t })} />
             </div>
-            <div style={{ flex: 'none' }}>
-              <div className="row" style={{ justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}><span>Progress</span><span className="mono">{tileInfo(proj).done}/{proj.tasks.length}</span></div>
-              <div className="bar" style={{ height: 6, borderRadius: 3 }}>{tileInfo(proj).shares.map(s => <div key={s.a} style={{ height: '100%', width: s.pct, background: AGENTS[s.a].color }} />)}</div>
-            </div>
-
-            <TabBar tab={tab} onPick={t => patchUi({ tab: t })} />
+          <div ref={wide ? scroller : undefined} style={{ padding: wide ? '0 18px 24px' : '0 18px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0, flex: wide ? 1 : 'none', overflow: wide ? 'auto' : undefined }}>
 
             {tab === 'overview' && (
               <>
@@ -244,6 +249,7 @@ export function Companion({ hub, onSettings, onNew, banner }: { hub: Hub; onSett
                 <Composer hub={hub} compact />
               </section>
             )}
+          </div>
           </div>
         </div>
       )}

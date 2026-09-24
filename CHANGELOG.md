@@ -5,6 +5,10 @@ at the top before releasing — the release workflow refuses to run without one.
 
 ## [0.28.0] - 2026-09-23
 
+### Fixed
+- **Android landscape: the tabs sat in the scroll, so a long chat rode up above them.** The title, progress and tabs are now a fixed head on the right; only the tab's own content scrolls.
+- **The cover filled its column with bars above and below it.** It now fills the whole left side.
+
 ### Added
 - **Notifications when something needs you.** A run takes minutes, so the app is usually behind something else by the time it wants an answer. Mosslight now notifies you — on the desktop and on the phone — when a handoff is waiting for approval, when a team plan is ready to run, when the agents need you to pick who takes a request, and when a long run finishes or fails.
   - On the desktop it stays quiet while you're looking at the window, and says nothing about a reply that took a few seconds.
