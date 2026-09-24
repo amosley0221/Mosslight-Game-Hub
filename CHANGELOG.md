@@ -3,6 +3,11 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.35.1] - 2026-09-24
+
+### Fixed
+- **A branch your checkout was behind on was offered for pushing.** The list treated "different from GitHub" as "has work GitHub doesn't have". When an agent pushes from its own clone, your main checkout stays on the older commit — different, but behind, and pushing it would rewind GitHub. Git refused, so the row couldn't even be cleared by using it: the push failed with "'git pull' before pushing again" every time. A branch is now offered only when it genuinely holds commits GitHub lacks, counted against what GitHub actually has, and the count shown is that number rather than a guess against the default branch.
+  - This includes the case where GitHub's commit isn't in that checkout at all, which is the one that was showing here — it means GitHub is ahead, so there is nothing to send.
 ## [0.35.0] - 2026-09-24
 
 (0.34.1 was never released — its build failed, and its fixes are included here.)

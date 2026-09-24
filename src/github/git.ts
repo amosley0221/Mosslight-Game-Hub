@@ -156,7 +156,7 @@ async function branchesIn(dir: string, from?: string, live?: Map<string, string>
     );
   }
 
-  return r.stdout
+  const rows = r.stdout
     .split('\n')
     .filter(Boolean)
     .map(line => {
@@ -168,11 +168,29 @@ async function branchesIn(dir: string, from?: string, live?: Map<string, string>
       // With a live answer, being on GitHub is the only thing that counts — an upstream setting is
       // just local config, and a branch can have one without GitHub having the commits.
       const pushed = live ? there === sha : !!upstream || there === sha;
-      return { name, ahead: ahead || own, pushed, subject: subject || '', dir, from, sha, sameAsRemote: there === sha, own };
+      return { name, ahead: ahead || own, pushed, subject: subject || '', dir, from, sha, sameAsRemote: there === sha, own, there };
     })
     // Worth showing only when it holds work of its own that GitHub doesn't already have.
-    .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && !b.sameAsRemote && b.own > 0)
-    .map(({ sha, sameAsRemote, own, ...b }) => b); // eslint-disable-line @typescript-eslint/no-unused-vars
+    .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && !b.sameAsRemote && b.own > 0);
+
+  const out: LocalBranch[] = [];
+  for (const b of rows) {
+    // Different from GitHub is not the same as ahead of it. A checkout that hasn't caught up with
+    // what an agent pushed is *behind*, and offering to push it means offering to rewind GitHub —
+    // which git then refuses, so the row can't even be cleared by using it.
+    let ahead = b.ahead;
+    if (b.there) {
+      const gap = await git([...safe, 'rev-list', '--count', `${b.there}..${b.name}`], dir);
+      const n = gap.ok ? Number(gap.stdout.trim()) : NaN;
+      // The count fails when GitHub's commit isn't in this checkout at all — which only happens
+      // when GitHub has work this checkout has never seen. Behind or diverged, either way there is
+      // nothing here to send, and offering it produces a rejected push.
+      if (!Number.isFinite(n) || n === 0) continue;
+      ahead = n;
+    }
+    out.push({ name: b.name, ahead, pushed: b.pushed, subject: b.subject, dir, from });
+  }
+  return out;
 }
 
 /**
