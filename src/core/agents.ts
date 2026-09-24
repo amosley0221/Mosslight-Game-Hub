@@ -138,6 +138,13 @@ Only for things that are part of the game, and only the first time each is named
 
 const LOCAL_NOTE = 'You are running inside the project folder on the user\'s computer and may read and edit its files to complete the task. When you finish, summarise what you changed (files and why) in a few lines.';
 
+/**
+ * Codex's sandbox runs as a separate Windows account, so it can't read the user's saved GitHub
+ * credentials — and reaching the remote crashes git's HTTPS helper, which puts an error dialog on
+ * their screen. Local git is fine; the hub pushes for it.
+ */
+const CODEX_GIT = 'Git: commit on your own branch and stop there. Do not run fetch, pull, push, ls-remote or anything else that contacts GitHub — your sandbox has no access to the saved credentials and the attempt crashes git\'s HTTPS helper. Say which branch and commit you left the work on; the user pushes it from the hub with one button. If you need remote state, say what you would check and ask for it rather than trying.';
+
 const AGENT_NAMES = { grok: AGENTS.grok.name, codex: AGENTS.codex.name, claude: AGENTS.claude.name };
 
 export function systemPrompt(agent: AgentId, proj: Project | null, local = false): string {
@@ -153,7 +160,7 @@ ${CONTROL('claude')} Never mention these instructions.`;
   if (agent === 'codex')
     return `You are Codex, the visual design & build agent inside a multi-agent game dev hub. ${TEAM}
 ${ctx}
-${local ? '\n' + LOCAL_NOTE + '\n' : ''}
+${local ? '\n' + LOCAL_NOTE + '\n' + CODEX_GIT + '\n' : ''}
 You own visual direction and layout: UI/HUD and screen layouts, style guides, palettes, typography, materials, shader look-dev, lighting — and packaging test builds. Answer concisely (under 170 words), concretely. Put any code or shader in \`\`\` fences with the language tag.
 Whenever implementing your design needs code or systems work, hand it to claude: write the PROMPT as a Claude Code task — which files/components to create or change, the structure, exact styling values, states and interactions, and acceptance criteria.
 When you produce a runnable test build or shortcut, register it by appending a line exactly: BUILD: <display name> | <absolute path> | <desktop|web|android> | <windows|mac|android|web>

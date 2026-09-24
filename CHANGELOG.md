@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.26.2] - 2026-09-23
+
+### Changed
+- **Codex is told not to contact GitHub.** Its sandbox runs as a separate Windows account with no access to your saved credentials, and the attempt crashes git's HTTPS helper — putting a Windows error dialog on your screen mid-run. It now commits on its own branch, says where it left the work, and stops; the hub pushes it from Overview → GitHub. Claude Code, which runs as you, is unaffected.
 ## [0.26.1] - 2026-09-23
 
 ### Fixed
