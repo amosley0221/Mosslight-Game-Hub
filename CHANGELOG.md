@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.27.1] - 2026-09-23
+
+### Added
+- **Push all**, when more than one branch is waiting.
+
+### Fixed
+- **A branch GitHub already has no longer reads "never pushed".** The list only knew about branches with upstream tracking configured, so one fetched by hand looked unpushed even when the remote held the same commit. It now compares against what `origin` actually has.
 ## [0.27.0] - 2026-09-23
 
 ### Fixed

@@ -113,21 +113,34 @@ export interface LocalBranch { name: string; ahead: number; pushed: boolean; sub
 
 /** Branches in one repository that GitHub hasn't seen. */
 async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
-  const fmt = '%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(contents:subject)';
   // An agent's sandbox runs as another Windows user, so its clone is "dubious ownership" to us.
   // Allowing it for this one command is safer than changing the user's global git config.
-  const r = await git(['-c', `safe.directory=${dir.replace(/\\/g, '/')}`, 'for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads'], dir);
+  const safe = ['-c', `safe.directory=${dir.replace(/\\/g, '/')}`];
+  const fmt = '%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(objectname:short)\u0001%(contents:subject)';
+  const r = await git([...safe, 'for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads'], dir);
   if (!r.ok) return [];
+
+  // A branch fetched by hand has no upstream configured, so ask what origin actually has
+  // rather than reporting work as unpushed when GitHub already holds it.
+  const remote = await git([...safe, 'for-each-ref', '--format=%(refname:short)\u0001%(objectname:short)', 'refs/remotes/origin'], dir);
+  const onRemote = new Map(
+    (remote.ok ? remote.stdout.split('\n') : [])
+      .filter(Boolean)
+      .map(l => l.split('\u0001'))
+      .map(([ref, sha]) => [ref.replace(/^origin\//, ''), sha]),
+  );
+
   return r.stdout
     .split('\n')
     .filter(Boolean)
     .map(line => {
-      const [name, upstream, track, subject] = line.split('\u0001');
+      const [name, upstream, track, sha, subject] = line.split('\u0001');
       const ahead = Number(track?.match(/ahead (\d+)/)?.[1] || 0);
-      return { name, ahead, pushed: !!upstream, subject: subject || '', dir, from };
+      const there = onRemote.get(name);
+      return { name, ahead, pushed: !!upstream || there === sha, subject: subject || '', dir, from, sha, sameAsRemote: there === sha };
     })
-    // Never pushed, or pushed and since moved on.
-    .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && (!b.pushed || b.ahead > 0));
+    .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && !b.sameAsRemote && (!b.pushed || b.ahead > 0))
+    .map(({ sha, sameAsRemote, ...b }) => b); // eslint-disable-line @typescript-eslint/no-unused-vars
 }
 
 /**

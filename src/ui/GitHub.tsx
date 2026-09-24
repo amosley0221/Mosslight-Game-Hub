@@ -117,11 +117,22 @@ function Unpushed({ hub, p }: { hub: Hub; p: Project }) {
     setBusy('');
     load();
   };
+  const pushAll = async () => {
+    for (const b of list) {
+      setBusy(b.name);
+      await hub.pushOne(p.id, b.name, b.dir);
+    }
+    setBusy('');
+    load();
+  };
   return (
     <div style={{ border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
-        {list.length === 1 ? 'A branch has' : `${list.length} branches have`} work that isn't on GitHub yet — including anything an agent committed in its own worktree.
-      </span>
+      <div className="row wrap" style={{ justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
+          {list.length === 1 ? 'A branch has' : `${list.length} branches have`} work that isn't on GitHub yet — including anything an agent committed in its own worktree.
+        </span>
+        {list.length > 1 && <button className="btn" style={{ padding: '6px 12px', fontSize: 12 }} disabled={!!busy} onClick={() => void pushAll()}>{busy ? 'Pushing…' : 'Push all'}</button>}
+      </div>
       {list.map(b => (
         <div key={b.name} className="row wrap" style={{ gap: 8, justifyContent: 'space-between' }}>
           <span style={{ minWidth: 0 }}>
