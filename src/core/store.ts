@@ -481,7 +481,8 @@ export function useHub() {
       void (async () => {
         const made = res.art?.map(a => a.imagePath).filter((p): p is string => !!p) || [];
         const shots = isDesktop ? await runImages(proj ? localFolder(proj)?.path : undefined, runStart, wrote).catch(() => []) : [];
-        const images = [...new Set([...made, ...shots])];
+        // Pictures the agent pointed at itself come first — it chose those on purpose.
+        const images = [...new Set([...(res.shots || []), ...made, ...shots])];
         if (images.length) updAgentMsg(key, id, { images });
       })();
       if (res.handoff && !res.stopped) {

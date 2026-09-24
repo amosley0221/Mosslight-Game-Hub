@@ -60,7 +60,7 @@ export function parseReply(raw: string, agent: AgentId, short: string): AgentRes
   for (const ln of body.split('\n')) {
     // Agents like to decorate these lines ("- **HANDOFF:** claude — …"). Undress the label only,
     // so paths and titles further along the line keep their punctuation.
-    const line = ln.replace(/^\s*(?:[-*>]\s*)?\**_*\s*(HANDOFF|TASK|ART|BUILD|ENTRY|CHARACTER)\s*\**_*\s*:\s*\**\s*/i, (_m, w: string) => `${w.toUpperCase()}: `);
+    const line = ln.replace(/^\s*(?:[-*>]\s*)?\**_*\s*(HANDOFF|TASK|ART|SHOT|BUILD|ENTRY|CHARACTER)\s*\**_*\s*:\s*\**\s*/i, (_m, w: string) => `${w.toUpperCase()}: `);
     // "ENTRY: Characters | Ray Calder — drives the RV" or the shorthand "CHARACTER: Ray Calder — …"
     const full = line.match(/^\s*ENTRY:\s*([^|]+?)\s*\|\s*([^—–|]+?)\s*(?:[—–|]+\s*(.+))?$/i);
     const short = line.match(/^\s*CHARACTER:\s*([^—–|]+?)\s*(?:[—–|]+\s*(.+))?$/i);
@@ -68,11 +68,14 @@ export function parseReply(raw: string, agent: AgentId, short: string): AgentRes
     const h = line.match(/^\s*HANDOFF:\s*\[?(grok|codex|claude)\]?\**\s*[—–:-]+\s*(.+)$/i);
     const k = line.match(/^\s*TASK:\s*(?:\[(grok|codex|claude)\]\s*)?(.+)$/i);
     const art = line.match(/^\s*ART:\s*(.+?)\s*[—–|-]+\s*(.+)$/i);
+    // A picture to put in the reply: a capture the agent took, or an image it looked at.
+    const shot = line.match(/^\s*SHOT:\s*(.+?)\s*$/i);
     const b = line.match(/^\s*BUILD:\s*(.+?)\s*\|\s*(.+?)(?:\s*\|\s*(desktop|web|android))?(?:\s*\|\s*(windows|mac|android|web))?\s*$/i);
     if (ent) (res.entries = res.entries || []).push({ section: clean(ent.section), name: clean(ent.name), body: ent.body ? clean(ent.body) : undefined });
     else if (h && h[1].toLowerCase() !== agent) res.handoff = { to: h[1].toLowerCase() as AgentId, reason: clean(h[2]) };
     else if (k) res.tasks!.push({ title: clean(k[2]), agent: k[1] && AGENT_RE.test(k[1]) ? (k[1].toLowerCase() as AgentId) : undefined });
     else if (art && agent === 'grok') (res.art = res.art || []).push({ title: art[1].trim(), prompt: art[2].trim() });
+    else if (shot && /\.(png|jpe?g|webp|bmp|gif)$/i.test(clean(shot[1]))) (res.shots = res.shots || []).push(clean(shot[1]));
     else if (b && agent === 'codex') (res.builds = res.builds || []).push({ name: b[1].trim(), path: b[2].trim(), kind: b[3]?.toLowerCase() as BuildKind | undefined, platform: b[4]?.toLowerCase() as Platform | undefined });
     else keep.push(ln);
   }

@@ -48,6 +48,18 @@ describe('parseReply control lines', () => {
     expect(r.builds?.[0]).toMatchObject({ name: 'City playtest', path: 'F:\\Vacancy\\Builds\\City_Playtest.lnk', kind: 'desktop', platform: 'windows' });
   });
 
+  it('takes pictures out of the reply and keeps the prose', () => {
+    const r = parseReply('Banding is gone on the parking court.\n- **SHOT:** F:\\Vacancy\\Art\\Reports\\ArroyoSurface56\\market-parking.png\nSHOT: F:\\Vacancy\\Art\\Reports\\ArroyoSurface56\\cedar-walk.png', 'codex', 'x');
+    expect(r.shots).toEqual(['F:\\Vacancy\\Art\\Reports\\ArroyoSurface56\\market-parking.png', 'F:\\Vacancy\\Art\\Reports\\ArroyoSurface56\\cedar-walk.png']);
+    expect(r.text).toBe('Banding is gone on the parking court.');
+  });
+
+  it('leaves a SHOT line that is not an image in the reply', () => {
+    const r = parseReply('SHOT: I took a look at the curb line', 'codex', 'x');
+    expect(r.shots).toBeUndefined();
+    expect(r.text).toBe('SHOT: I took a look at the curb line');
+  });
+
   it("ignores a handoff an agent addresses to itself", () => {
     const r = parseReply('HANDOFF: codex — mine already', 'codex', 'x');
     expect(r.handoff).toBeUndefined();

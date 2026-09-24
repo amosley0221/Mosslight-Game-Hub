@@ -248,6 +248,8 @@ export interface AgentResult {
   gdd?: { title: string; body: string };
   /** Story bible entries an agent recorded while working: cast, places, vehicles. */
   entries?: { section: string; name: string; body?: string }[];
+  /** Pictures the agent wants you to look at: captures it took, or an existing image it read. */
+  shots?: string[];
   handoff?: { to: AgentId; reason: string; prompt?: string };
   error?: boolean;
 }

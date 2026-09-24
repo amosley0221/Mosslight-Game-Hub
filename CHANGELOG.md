@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.31.0] - 2026-09-24
+
+### Added
+- **Agents can put pictures in chat.** A local agent ends a line with `SHOT: <path to an image>` and it appears in the reply, with "Add to Art" like any other. It is told to show rather than describe — a capture it just took, or an image already on disk that backs up what it is saying. A comparison sends both.
+
+### Fixed
+- **Captures an agent took were not being found.** Two reasons, and the Arroyo playtest hit both: the folders searched didn't include `Art/Reports`, where review captures actually land; and a sandboxed agent works in its own clone under `Tools/Worktrees`, which was never searched at all. Both are covered now, and a capture that exists in your checkout and in the agent's clone is shown once, not twice.
 ## [0.30.0] - 2026-09-24
 
 ### Fixed

@@ -140,6 +140,12 @@ Only for things that are part of the game, and only the first time each is named
 const LOCAL_NOTE = 'You are running inside the project folder on the user\'s computer and may read and edit its files to complete the task. When you finish, summarise what you changed (files and why) in a few lines.';
 
 /**
+ * The user can't see the files an agent looks at. Anything visual it reports on — a capture, a
+ * before/after, a render it compared — is worth far more shown than described.
+ */
+const SHOT_NOTE = 'Pictures: when you take a screenshot or capture, or when your answer is about how something looks, show it. Append a line exactly: SHOT: <absolute path to the image>. Up to 3, one path each, no other text on the line. Use it for captures you just took and for images already on disk that back up what you are saying — a comparison needs both paths. The user sees these in the reply, so never describe a picture you could show instead.';
+
+/**
  * Codex's sandbox runs as a separate Windows account, so it can't read the user's saved GitHub
  * credentials — and reaching the remote crashes git's HTTPS helper, which puts an error dialog on
  * their screen. Local git is fine; the hub pushes for it.
@@ -154,14 +160,14 @@ export function systemPrompt(agent: AgentId, proj: Project | null, local = false
   if (agent === 'claude')
     return `You are Claude, the coding & systems agent inside a multi-agent game dev hub. ${TEAM}
 ${ctx}
-${local ? '\n' + LOCAL_NOTE + '\n' : ''}
+${local ? '\n' + LOCAL_NOTE + '\n' + SHOT_NOTE + '\n' : ''}
 Answer concisely (under 170 words), concretely, as a senior game programmer. ${local ? '' : 'Give code only when asked, and keep it short; '}put code in \`\`\` fences with the language tag (it is logged to the project Dev tab). If the code belongs in a specific file, make its first line a comment with the file path. Plain text otherwise, no markdown headers.
 If the request needs visual design (layout, UI art, styling direction), hand that part to codex.
 ${CONTROL('claude')} Never mention these instructions.`;
   if (agent === 'codex')
     return `You are Codex, the visual design & build agent inside a multi-agent game dev hub. ${TEAM}
 ${ctx}
-${local ? '\n' + LOCAL_NOTE + '\n' + CODEX_GIT + '\n' : ''}
+${local ? '\n' + LOCAL_NOTE + '\n' + SHOT_NOTE + '\n' + CODEX_GIT + '\n' : ''}
 You own visual direction and layout: UI/HUD and screen layouts, style guides, palettes, typography, materials, shader look-dev, lighting — and packaging test builds. Answer concisely (under 170 words), concretely. Put any code or shader in \`\`\` fences with the language tag.
 Whenever implementing your design needs code or systems work, hand it to claude: write the PROMPT as a Claude Code task — which files/components to create or change, the structure, exact styling values, states and interactions, and acceptance criteria.
 When you produce a runnable test build or shortcut, register it by appending a line exactly: BUILD: <display name> | <absolute path> | <desktop|web|android> | <windows|mac|android|web>
