@@ -221,10 +221,10 @@ struct EngineProc {
 async fn engine_procs() -> Result<Vec<EngineProc>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let out = if cfg!(windows) {
-            let ps = r#"@(Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(UnrealEditor|UnrealEditor-Cmd|UE4Editor|blender|blender-launcher|Unity|godot)' } | ForEach-Object { $u = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; [pscustomobject]@{ pid = [int]$_.ProcessId; name = $_.Name; cmd = [string]$_.CommandLine; mb = [int]($_.WorkingSetSize / 1MB); started = $_.CreationDate.ToString('s'); window = if ($u -and $u.MainWindowHandle -ne 0) { [string]$u.MainWindowTitle } else { '' } } }) | ConvertTo-Json -Compress"#;
+            let ps = r#"@(Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(UnrealEditor|UnrealEditor-Cmd|UE4Editor|blender|blender-launcher|Unity|godot)' -or ($_.Name -match '^dotnet' -and $_.CommandLine -match 'UnrealBuildTool|AutomationTool') } | ForEach-Object { $u = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; [pscustomobject]@{ pid = [int]$_.ProcessId; name = $(if ($_.Name -match '^dotnet') { 'UnrealBuildTool' } else { $_.Name }); cmd = [string]$_.CommandLine; mb = [int]($_.WorkingSetSize / 1MB); started = $_.CreationDate.ToString('s'); window = if ($u -and $u.MainWindowHandle -ne 0) { [string]$u.MainWindowTitle } else { '' } } }) | ConvertTo-Json -Compress"#;
             run(Path::new("powershell"), &["-NoProfile", "-NonInteractive", "-Command", ps])?
         } else {
-            let sh = r#"ps -axo pid=,rss=,lstart=,command= | grep -Ei '(UnrealEditor|UE4Editor|blender|Unity|godot)' | grep -v grep"#;
+            let sh = r#"ps -axo pid=,rss=,lstart=,command= | grep -Ei '(UnrealEditor|UE4Editor|blender|Unity|godot|UnrealBuildTool|AutomationTool)' | grep -v grep"#;
             let text = run(Path::new("/bin/sh"), &["-c", sh])?;
             // Same shape as the Windows JSON, built from ps columns.
             let rows: Vec<String> = text

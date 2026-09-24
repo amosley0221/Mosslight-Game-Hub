@@ -68,9 +68,15 @@ export function engineContext(): string[] {
   return [
     'Engine processes running on this computer right now (the single GPU slot):',
     ...engines.map(e => {
-      const how = e.window ? ` — window "${e.window}"` : isBatch(e) ? ' — headless job, probably a run already in progress' : ' — no window, likely a session that never shut down';
+      const how = /^unrealbuildtool$/i.test(e.name) ? ' — a build in progress'
+        : e.window ? ` — window "${e.window}"`
+        : isBatch(e) ? ' — headless job, probably a run already in progress'
+        : ' — no window, likely a session that never shut down';
       return `- ${e.name} (PID ${e.pid}, ${e.mb} MB${e.started ? `, since ${e.started.replace('T', ' ').slice(0, 16)}` : ''})${how}`;
     }),
     'Do not start an engine or GPU capture while one of these is running, and never end one yourself: name it and let the user decide.',
+    // Two UnrealBuildTool instances started together race on the same Trace.uba file and one dies
+    // before it builds anything, so a second build is not just slow — it can silently not happen.
+    'That includes builds: never start an Unreal build while UnrealBuildTool is listed above. Wait for it to finish.',
   ];
 }

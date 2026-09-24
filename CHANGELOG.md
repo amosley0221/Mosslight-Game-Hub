@@ -3,6 +3,12 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.30.0] - 2026-09-24
+
+### Fixed
+- **The `dotnet.exe` crash box during Unreal work.** `Exception 0xe0434352` is UnrealBuildTool dying at startup on `Could not find file ...\UnrealBuildTool\Trace.uba`. It is an Unreal bug — UBT checks the trace file exists, then moves it, and a second UBT started at the same moment moves it first — but Mosslight caused it by letting two agents build at once. The engine list now also reports a build in progress, so an agent can see it and wait.
+  - The list matched editor windows only, so a build was invisible to everyone but the agent running it.
+  - This is not cosmetic: the UBT that loses the race exits before compiling anything, so that build silently does not happen.
 ## [0.29.2] - 2026-09-24
 
 ### Fixed
