@@ -126,7 +126,11 @@ function Unpushed({ hub, p }: { hub: Hub; p: Project }) {
         <div key={b.name} className="row wrap" style={{ gap: 8, justifyContent: 'space-between' }}>
           <span style={{ minWidth: 0 }}>
             <span className="mono ellipsis" style={{ display: 'block', fontSize: 12, fontWeight: 600 }}>{b.name}</span>
-            <span className="ellipsis" style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>{b.pushed ? `${b.ahead} commit${b.ahead === 1 ? '' : 's'} ahead · ` : 'never pushed · '}{b.subject}</span>
+            <span className="ellipsis" style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>
+              {b.pushed ? `${b.ahead} commit${b.ahead === 1 ? '' : 's'} ahead · ` : 'never pushed · '}
+              {b.from ? `in ${b.from} · ` : ''}
+              {b.subject}
+            </span>
           </span>
           <button className="btn" style={{ padding: '6px 12px', fontSize: 12 }} disabled={!!busy} onClick={() => void push(b.name, b.dir)}>{busy === b.name ? 'Pushing…' : 'Push'}</button>
         </div>

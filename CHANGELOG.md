@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.26.1] - 2026-09-23
+
+### Fixed
+- The unpushed-branch list now names the folder a branch lives in (`in Tools/Worktrees/MarketPlaytestReview`), which 0.26.0 collected but didn't show.
 ## [0.26.0] - 2026-09-23
 
 ### Added
