@@ -116,7 +116,14 @@ async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
   // An agent's sandbox runs as another Windows user, so its clone is "dubious ownership" to us.
   // Allowing it for this one command is safer than changing the user's global git config.
   const safe = ['-c', `safe.directory=${dir.replace(/\\/g, '/')}`];
-  const fmt = '%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(objectname:short)\u0001%(contents:subject)';
+
+  // A branch cut from main and never committed to has no upstream either, but there's nothing
+  // to back up — so measure it against the default branch, not just against having a remote.
+  let base = '';
+  for (const candidate of ['refs/remotes/origin/main', 'refs/remotes/origin/master']) {
+    if ((await git([...safe, 'rev-parse', '--verify', '--quiet', candidate], dir)).ok) { base = candidate; break; }
+  }
+  const fmt = `%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(objectname:short)\u0001${base ? `%(ahead-behind:${base})` : ''}\u0001%(contents:subject)`;
   const r = await git([...safe, 'for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads'], dir);
   if (!r.ok) return [];
 
@@ -134,13 +141,16 @@ async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
     .split('\n')
     .filter(Boolean)
     .map(line => {
-      const [name, upstream, track, sha, subject] = line.split('\u0001');
+      const [name, upstream, track, sha, aheadBehind, subject] = line.split('\u0001');
       const ahead = Number(track?.match(/ahead (\d+)/)?.[1] || 0);
+      // "<ahead> <behind>" against the default branch; without a base, assume it has something.
+      const own = base ? Number(aheadBehind?.trim().split(/\s+/)[0] || 0) : 1;
       const there = onRemote.get(name);
-      return { name, ahead, pushed: !!upstream || there === sha, subject: subject || '', dir, from, sha, sameAsRemote: there === sha };
+      return { name, ahead: ahead || own, pushed: !!upstream || there === sha, subject: subject || '', dir, from, sha, sameAsRemote: there === sha, own };
     })
-    .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && !b.sameAsRemote && (!b.pushed || b.ahead > 0))
-    .map(({ sha, sameAsRemote, ...b }) => b); // eslint-disable-line @typescript-eslint/no-unused-vars
+    // Worth showing only when it holds work of its own that GitHub doesn't already have.
+    .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && !b.sameAsRemote && b.own > 0)
+    .map(({ sha, sameAsRemote, own, ...b }) => b); // eslint-disable-line @typescript-eslint/no-unused-vars
 }
 
 /**

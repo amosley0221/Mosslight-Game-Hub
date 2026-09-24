@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.29.2] - 2026-09-24
+
+### Fixed
+- **Branches with nothing in them were offered for pushing.** The list asked whether a branch had an upstream, not whether it held any work — so one cut from `main` and never committed to appeared as "never pushed". It now counts commits the default branch doesn't have, and shows only branches that actually carry something. (Pushing an empty one was harmless — Push never merges and never touches `main` — but it would have left a remote branch identical to `main`.)
 ## [0.29.1] - 2026-09-23
 
 ### Fixed
