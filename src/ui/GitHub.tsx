@@ -102,7 +102,7 @@ export function RepoPicker({ title, hint, onPick, onClose }: { title: string; hi
  * sandboxed CLI can't read your saved credentials, so the push fails. The hub has a token that works.
  */
 function Unpushed({ hub, p }: { hub: Hub; p: Project }) {
-  const [list, setList] = useState<{ name: string; ahead: number; pushed: boolean; subject: string }[]>([]);
+  const [list, setList] = useState<{ name: string; ahead: number; pushed: boolean; subject: string; dir: string; from?: string }[]>([]);
   const [busy, setBusy] = useState('');
   const load = () => { void hub.listUnpushed(p.id).then(setList); };
   useEffect(() => {
@@ -111,9 +111,9 @@ function Unpushed({ hub, p }: { hub: Hub; p: Project }) {
     return () => window.clearInterval(t);
   }, [p.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!list.length) return null;
-  const push = async (name: string) => {
+  const push = async (name: string, dir: string) => {
     setBusy(name);
-    await hub.pushOne(p.id, name);
+    await hub.pushOne(p.id, name, dir);
     setBusy('');
     load();
   };
@@ -128,7 +128,7 @@ function Unpushed({ hub, p }: { hub: Hub; p: Project }) {
             <span className="mono ellipsis" style={{ display: 'block', fontSize: 12, fontWeight: 600 }}>{b.name}</span>
             <span className="ellipsis" style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>{b.pushed ? `${b.ahead} commit${b.ahead === 1 ? '' : 's'} ahead · ` : 'never pushed · '}{b.subject}</span>
           </span>
-          <button className="btn" style={{ padding: '6px 12px', fontSize: 12 }} disabled={!!busy} onClick={() => void push(b.name)}>{busy === b.name ? 'Pushing…' : 'Push'}</button>
+          <button className="btn" style={{ padding: '6px 12px', fontSize: 12 }} disabled={!!busy} onClick={() => void push(b.name, b.dir)}>{busy === b.name ? 'Pushing…' : 'Push'}</button>
         </div>
       ))}
     </div>

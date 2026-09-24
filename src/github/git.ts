@@ -1,4 +1,4 @@
-import { joinPath, runGit, writeTextIfMissing, type GitOutput } from '../platform';
+import { joinPath, runGit, scanFolder, writeTextIfMissing, type GitOutput } from '../platform';
 import { currentUser, getGitHubToken, parseRepo } from './api';
 
 /** Basic-auth header for github.com; handed to git via environment variables only. */
@@ -92,15 +92,14 @@ export async function backup(dir: string, message: string, protectBranch?: strin
 }
 
 /** Clone into `<parent>/<name>` and return the new folder. */
-export interface LocalBranch { name: string; ahead: number; pushed: boolean; subject: string }
+export interface LocalBranch { name: string; ahead: number; pushed: boolean; subject: string; dir: string; from?: string }
 
-/**
- * Branches with work that isn't on GitHub yet — including the ones agents committed in their own
- * worktrees, since every worktree shares the repository's branches.
- */
-export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
+/** Branches in one repository that GitHub hasn't seen. */
+async function branchesIn(dir: string, from?: string): Promise<LocalBranch[]> {
   const fmt = '%(refname:short)\u0001%(upstream)\u0001%(upstream:track)\u0001%(contents:subject)';
-  const r = await git(['for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads'], dir);
+  // An agent's sandbox runs as another Windows user, so its clone is "dubious ownership" to us.
+  // Allowing it for this one command is safer than changing the user's global git config.
+  const r = await git(['-c', `safe.directory=${dir.replace(/\\/g, '/')}`, 'for-each-ref', '--sort=-committerdate', `--format=${fmt}`, 'refs/heads'], dir);
   if (!r.ok) return [];
   return r.stdout
     .split('\n')
@@ -108,11 +107,37 @@ export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
     .map(line => {
       const [name, upstream, track, subject] = line.split('\u0001');
       const ahead = Number(track?.match(/ahead (\d+)/)?.[1] || 0);
-      return { name, ahead, pushed: !!upstream, subject: subject || '' };
+      return { name, ahead, pushed: !!upstream, subject: subject || '', dir, from };
     })
     // Never pushed, or pushed and since moved on.
-    .filter(b => b.name && (!b.pushed || b.ahead > 0))
-    .slice(0, 20);
+    .filter(b => b.name && b.name !== 'main' && b.name !== 'master' && (!b.pushed || b.ahead > 0));
+}
+
+/**
+ * Work that isn't on GitHub yet, from the project itself and from the clones agents make beside
+ * it. A sandboxed agent often can't create a worktree inside your repo (it runs as a different
+ * user), so it clones into Tools/Worktrees and commits there — invisible from the main checkout.
+ */
+export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
+  const out = await branchesIn(dir);
+  const seen = new Set(out.map(b => b.name));
+  // Where agents put their clones. Deliberately not all of Tools/ — that can hold hundreds of
+  // folders, and listing each one to look for .git would cost more than this is worth.
+  for (const parent of ['Tools/Worktrees', 'Worktrees']) {
+    const base = await joinPath(dir, ...parent.split('/'));
+    const listing = await scanFolder(base).catch(() => null);
+    for (const child of (listing?.entries || []).filter(e => e.is_dir).slice(0, 25)) {
+      const path = await joinPath(base, child.name);
+      const inner = await scanFolder(path).catch(() => null);
+      if (!inner?.entries.some(e => e.name === '.git')) continue;
+      for (const b of await branchesIn(path, `${parent}/${child.name}`)) {
+        if (seen.has(b.name)) continue;
+        seen.add(b.name);
+        out.push(b);
+      }
+    }
+  }
+  return out.slice(0, 20);
 }
 
 /**
@@ -121,7 +146,7 @@ export async function unpushedBranches(dir: string): Promise<LocalBranch[]> {
  * empty. The token here is passed to git through the environment and never written to disk.
  */
 export async function pushBranch(dir: string, branch: string): Promise<string> {
-  const r = await git(['push', '-u', 'origin', `${branch}:${branch}`], dir, true);
+  const r = await git(['-c', `safe.directory=${dir.replace(/\\/g, '/')}`, 'push', '-u', 'origin', `${branch}:${branch}`], dir, true);
   if (!r.ok) throw new Error(`Pushing ${branch} failed: ${tail(r) || 'exit ' + r.code}`);
   return branch;
 }

@@ -7,6 +7,10 @@ at the top before releasing — the release workflow refuses to run without one.
 
 ### Added
 - **Push an agent's branch from the hub.** Agents commit their work fine, but a sandboxed CLI can't reach your saved GitHub credentials, so its push fails with "no Schannel credentials" and the work sits on a local branch. Overview → GitHub now lists branches that aren't on GitHub yet — including ones committed inside an agent's own worktree, since worktrees share the repository — with a **Push** button each. It uses the hub's own token, which works, and never writes it to disk.
+## [0.26.0] - 2026-09-23
+
+### Added
+- **Push an agent's branch from the hub.** Agents commit their work fine, but a sandboxed CLI can't reach your saved GitHub credentials, so its push fails with "no Schannel credentials" and the work sits on a local branch. Overview → GitHub now lists branches that aren't on GitHub yet — including ones committed inside an agent's own worktree, since worktrees share the repository — with a **Push** button each. It uses the hub's own token, which works, and never writes it to disk.
 ## [0.25.1] - 2026-09-23
 
 ### Fixed

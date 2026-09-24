@@ -936,9 +936,9 @@ export function useHub() {
     return unpushedBranches(path).catch(() => []);
   }, []);
 
-  const pushOne = useCallback(async (pid: string, branch: string) => {
+  const pushOne = useCallback(async (pid: string, branch: string, dir?: string) => {
     const p = dataRef.current.projects.find(x => x.id === pid);
-    const path = p && localFolder(p)?.path;
+    const path = dir || (p && localFolder(p)?.path);
     if (!path) return;
     try {
       await pushBranch(path, branch);
