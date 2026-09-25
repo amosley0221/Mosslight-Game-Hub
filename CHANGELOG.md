@@ -3,6 +3,10 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.37.2] - 2026-09-25
+
+### Fixed
+- **The hub could only see the first 400 markdown files in a project, and read its task cards out of those.** It scanned the whole repository and filtered to `Docs/Tasks` afterwards, so in a project with thousands of markdown files — normal for a game — the cap ran out before reaching the cards, and any card it didn't see was treated as one that didn't exist. That was the second half of how reviewed cards ended up replaced by blank templates; 0.37.0 stopped the overwriting, and this stops the hub losing track of them in the first place. It now reads the card folder directly, which is also a great deal faster: on a project here that is 127 files instead of 6,829.
 ## [0.37.1] - 2026-09-25
 
 ### Fixed

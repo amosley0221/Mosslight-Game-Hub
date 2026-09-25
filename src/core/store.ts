@@ -940,8 +940,12 @@ export function useHub() {
     if (!isDesktop || !root) { if (announce) toast('This project has no folder on this computer'); return; }
     let found: { path: string; folder: string; text: string }[] = [];
     try {
-      const files = (await findFiles(root, ['md'], 400)).filter(f => f.folder.toLowerCase() === CARD_DIR.join('/').toLowerCase());
-      found = await Promise.all(files.map(async f => ({ path: f.path, folder: f.folder, text: new TextDecoder().decode(await readFileBytes(f.path, 200_000)) })));
+      // Read the card folder itself, not the whole repository. Scanning the repo and filtering
+      // afterwards meant a cap of 400 markdown files decided which cards the hub could see — and
+      // a project with thousands of them (this is normal for a game) hid its own cards.
+      const dir = await joinPath(root, ...CARD_DIR);
+      const files = await findFiles(dir, ['md'], 600);
+      found = await Promise.all(files.map(async f => ({ path: f.path, folder: CARD_DIR.join('/'), text: new TextDecoder().decode(await readFileBytes(f.path, 200_000)) })));
     } catch { /* no Docs/Tasks yet */ }
 
     const cards = found.map(f => ({ ...parseCard(f.text)!, rel: `${f.folder}/${baseName(f.path)}` })).filter(c => c.id);
