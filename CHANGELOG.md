@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.37.1] - 2026-09-25
+
+### Fixed
+- **Clicking the window's X did nothing, and the app had to be killed from Task Manager.** The "an agent is still working" warning asked with `window.confirm`, which blocks the webview's script thread while Tauri waits for that same handler to finish. In WebView2 the dialog frequently never paints, so nothing was asked, nothing resolved, and the window stayed open with no explanation. The warning is now an ordinary in-app dialog and the close handler returns immediately.
+  - **Asking twice always closes.** A run that never reported finishing — a CLI that crashed, say — left the app permanently convinced work was in flight. Clicking X a second time now closes regardless, so a stuck run can't trap the window.
+  - `beforeunload` no longer runs on the desktop at all. It can block a close on its own, and it was never the thing doing the asking there.
+  - Added the window permissions the close path needs, which would have produced the same silent failure on their own.
 ## [0.37.0] - 2026-09-25
 
 ### Fixed
