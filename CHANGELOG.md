@@ -3,6 +3,17 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.37.0] - 2026-09-25
+
+### Fixed
+- **Mosslight destroyed reviewed task cards, replacing them with blank templates.** The card reader only accepted `todo`, `doing` and `done` as a status. Agents write their own words — `reviewed`, `ready for review` — and a card using one failed to parse, so the hub concluded the card did not exist and wrote a fresh template over it. Objective, notes and the whole review history went with it. Three changes, each of which would have prevented it on its own:
+  - **A file the hub cannot read is never overwritten.** It is someone else's work, not a blank to fill.
+  - **An unfamiliar status means work in flight**, not an invalid card. Words that clearly mean finished (`completed`, `closed`, `merged`) read as done; anything else reads as in progress.
+  - **The card keeps its own word.** A card saying `reviewed` still says `reviewed` after the hub touches it, instead of being flattened to `doing`.
+- **The reconcile decided what to write from the task list as it was before reconciling**, because it read a snapshot taken at render time. It now uses what the merge actually produced.
+
+### Added
+- **Settings → Agents → Let Mosslight write to project folders.** Turn it off and the hub only reads: no cards are written or updated. Tasks still work in the hub, and agents you ask still edit files. It is the setting to use when something else owns the folder.
 ## [0.36.0] - 2026-09-24
 
 ### Changed

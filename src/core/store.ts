@@ -919,7 +919,8 @@ export function useHub() {
   const saveCard = useCallback(async (pid: string, task: Task, change?: string) => {
     const p = dataRef.current.projects.find(x => x.id === pid);
     const root = p && localFolder(p)?.path;
-    if (!isDesktop || !root) return;
+    // One gate for every card the hub writes, wherever it was triggered from.
+    if (!isDesktop || !root || settingsRef.current.hubWrites === false) return;
     try {
       await writeCard(root, task, change);
       const rel = cardRelPath(task);
@@ -945,6 +946,9 @@ export function useHub() {
 
     const cards = found.map(f => ({ ...parseCard(f.text)!, rel: `${f.folder}/${baseName(f.path)}` })).filter(c => c.id);
     let added = 0, moved = 0;
+    // dataRef is assigned during render, so reading it straight after updProj gives the list from
+    // before the merge. Capture what the merge produced instead.
+    let merged: Task[] = [];
     updProj(pid, q => {
       const byId = new Map(cards.map(c => [c.id, c]));
       const tasks = q.tasks.map(t => {
@@ -959,11 +963,14 @@ export function useHub() {
         added++;
         tasks.push({ id: c.id, agent: c.owner, title: c.title, status: c.status, ts: c.created || now(), card: c.rel });
       }
+      merged = tasks;
       return { ...q, tasks };
     });
-    // Anything the hub has but the folder doesn't gets a card written for it.
-    const after = dataRef.current.projects.find(x => x.id === pid);
-    const missing = (after?.tasks || []).filter(t => !cards.some(c => c.id === t.id));
+    // Anything the hub has but the folder doesn't gets a card written for it — unless you've told
+    // the hub to keep its hands off the folder, in which case this is a read-only reconcile.
+    const missing = settingsRef.current.hubWrites === false
+      ? []
+      : merged.filter(t => !cards.some(c => c.id === t.id));
     for (const t of missing) await saveCard(pid, t, 'card created from the hub');
     if (announce) toast(`${cards.length} card${cards.length === 1 ? '' : 's'} in Docs/Tasks${added ? ` · ${added} new here` : ''}${moved ? ` · ${moved} status change${moved === 1 ? '' : 's'}` : ''}${missing.length ? ` · wrote ${missing.length}` : ''}`);
   }, [saveCard, toast, updProj]);

@@ -125,6 +125,15 @@ export function AgentSettings({ hub, keys, onAddKey }: { hub: Hub; keys: Record<
             {ORDER.map(a => <option key={a} value={a}>{AGENTS[a].name}</option>)}
           </select>
         </div>
+        {isDesktop && (
+          <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Let Mosslight write to project folders</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>The hub keeps a card in <span className="mono">Docs/Tasks</span> for each task and writes one when a task has none. Turn this off and it only reads — your tasks still work, and agents you ask still edit files. Off is the right setting when something else owns the folder.</div>
+            </div>
+            <Switch on={settings.hubWrites !== false} onClick={() => updSettings(s => ({ ...s, hubWrites: s.hubWrites === false ? undefined : false }))} />
+          </div>
+        )}
         <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>How much they explain</div>

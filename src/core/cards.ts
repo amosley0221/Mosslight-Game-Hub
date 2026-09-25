@@ -26,12 +26,26 @@ export interface CardFile {
   title: string;
   owner: AgentId;
   status: TaskStatus;
+  /** The word the file actually used — agents write their own ("reviewed", "ready for review"). */
+  rawStatus?: string;
   created?: number;
   body: string;
 }
 
+/**
+ * The hub tracks three states; a card can say anything. An agent writing "reviewed" on its own
+ * card is recording real work, so a word we don't know means work in flight — never a reason to
+ * disown the card, which is how a reviewed card ends up replaced by a blank template.
+ */
+export function toStatus(raw: string): TaskStatus | null {
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+  if (s === 'todo' || s === 'doing' || s === 'done') return s;
+  if (/\b(done|complete|completed|closed|merged|shipped|cancelled|canceled|wont ?fix)\b/.test(s)) return 'done';
+  return 'doing';
+}
+
 const OWNERS: AgentId[] = ['grok', 'codex', 'claude'];
-const STATUSES: TaskStatus[] = ['todo', 'doing', 'done'];
 
 /** Reads the front matter of a card. Returns null for a Markdown file that isn't one. */
 export function parseCard(text: string): CardFile | null {
@@ -43,10 +57,10 @@ export function parseCard(text: string): CardFile | null {
     if (kv) fields[kv[1].toLowerCase()] = kv[2].trim();
   }
   const owner = fields.owner as AgentId;
-  const status = fields.status as TaskStatus;
-  if (!fields.id || !fields.title || !OWNERS.includes(owner) || !STATUSES.includes(status)) return null;
+  const status = toStatus(fields.status || '');
+  if (!fields.id || !fields.title || !OWNERS.includes(owner) || !status) return null;
   const created = fields.created ? Date.parse(fields.created) : NaN;
-  return { id: fields.id, title: fields.title, owner, status, created: Number.isNaN(created) ? undefined : created, body: m[2] };
+  return { id: fields.id, title: fields.title, owner, status, rawStatus: fields.status, created: Number.isNaN(created) ? undefined : created, body: m[2] };
 }
 
 function frontMatter(t: Task, created: number) {
@@ -72,12 +86,22 @@ export async function writeCard(root: string, t: Task, change?: string): Promise
   const path = await joinPath(root, ...CARD_DIR, cardName(t));
   let body = '';
   let created = t.ts || Date.now();
+  let existing = '';
+  let old: CardFile | null = null;
   try {
-    const old = parseCard(new TextDecoder().decode(await readFileBytes(path, MAX_CARD)));
-    if (old) { body = old.body; created = old.created ?? created; }
+    existing = new TextDecoder().decode(await readFileBytes(path, MAX_CARD));
+    old = parseCard(existing);
   } catch { /* new card */ }
+  // A file we can't read is someone else's work, not a blank to fill. Writing a fresh template
+  // over it destroys whatever it held — which is exactly what happened to cards whose status the
+  // agents had written in their own words.
+  if (existing.trim() && !old) return path;
+  if (old) { body = old.body; created = old.created ?? created; }
   if (!body.trim()) body = NEW_BODY(t);
   if (change) body = withHistory(body, change);
-  await saveBytes(new TextEncoder().encode(`${frontMatter(t, created)}\n${body.startsWith('\n') ? '' : '\n'}${body}`), path, '');
+  // Keep the file's own word for the status when it still means what the hub thinks it means:
+  // "reviewed" says more than "doing", and the hub has no business flattening it.
+  const status = old?.rawStatus && toStatus(old.rawStatus) === t.status ? old.rawStatus : t.status;
+  await saveBytes(new TextEncoder().encode(`${frontMatter(t, created, status)}\n${body.startsWith('\n') ? '' : '\n'}${body}`), path, '');
   return path;
 }

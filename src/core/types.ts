@@ -227,6 +227,8 @@ export interface Settings {
   lead?: AgentId | 'off';
   /** How much the agents explain themselves. Unset means 'plain'. */
   explain?: Explain;
+  /** Let the hub write to project folders on its own (task cards). Unset means yes. */
+  hubWrites?: boolean;
   device: { name: string; paired: boolean };
   tools: Record<string, boolean>;
   libraryDir?: string;
