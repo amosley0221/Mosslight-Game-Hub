@@ -63,8 +63,8 @@ export function parseCard(text: string): CardFile | null {
   return { id: fields.id, title: fields.title, owner, status, rawStatus: fields.status, created: Number.isNaN(created) ? undefined : created, body: m[2] };
 }
 
-function frontMatter(t: Task, created: number) {
-  return ['---', `id: ${t.id}`, `title: ${t.title.replace(/\n/g, ' ')}`, `owner: ${t.agent}`, `status: ${t.status}`, `created: ${new Date(created).toISOString()}`, `updated: ${new Date().toISOString()}`, '---'].join('\n');
+function frontMatter(t: Task, created: number, status: string = t.status) {
+  return ['---', `id: ${t.id}`, `title: ${t.title.replace(/\n/g, ' ')}`, `owner: ${t.agent}`, `status: ${status}`, `created: ${new Date(created).toISOString()}`, `updated: ${new Date().toISOString()}`, '---'].join('\n');
 }
 
 /** Adds a dated line under "## History", making the section if the card doesn't have one yet. */
