@@ -4,7 +4,7 @@ import { totalUsage, type Hub } from '../core/store';
 import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
 import { copyText, endProcess, engineProcs, isDesktop, launchPath, openExternal, type EngineProc } from '../platform';
-import { groupProcs, setEngineProcs } from '../core/runs';
+import { groupProcs, setEngineProcs, type Proc } from '../core/runs';
 import { RepoCard } from './GitHub';
 import { ArtTab, useProjectImages } from './Media';
 import { StoryTab } from './Story';
@@ -114,11 +114,11 @@ function StoryCard({ hub, p }: { hub: Hub; p: P }) {
  * Headless on purpose — a commandlet, an offscreen render, Blender in background — rather than a
  * window that closed and left its process behind. Killing one of these kills an agent's job.
  */
-const batchJob = (p: EngineProc) =>
-  /-cmd\.exe$|-cmd$/i.test(p.name) || /-unattended|-renderoffscreen|-execcmds|--background|-nosplash|-batchmode|--headless/i.test(p.cmd);
+const batchJob = (p: { name: string; cmd?: string }) =>
+  /-cmd\.exe$|-cmd$/i.test(p.name) || /-unattended|-renderoffscreen|-execcmds|--background|-nosplash|-batchmode|--headless/i.test(p.cmd || '');
 
 /** The log a batch job was told to write, so you can watch it instead of guessing. */
-const logOf = (p: EngineProc) => p.cmd.match(/-(?:abs)?log="?([^"\s]+)/i)?.[1];
+const logOf = (p: { cmd?: string }) => (p.cmd || '').match(/-(?:abs)?log="?([^"\s]+)/i)?.[1];
 
 /**
  * What's holding the GPU. Engines routinely survive their own window closing, so a play session
@@ -138,7 +138,7 @@ function EngineSlot() {
   // Shown even when nothing is running: "the slot is free" is the answer people come here for.
   if (!isDesktop) return null;
   const groups = groupProcs(list || []);
-  const end = async (p: EngineProc, kids = 0) => {
+  const end = async (p: Proc, kids = 0) => {
     const what = p.window
       ? `Window: ${p.window}`
       : batchJob(p)
