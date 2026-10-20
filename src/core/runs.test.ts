@@ -19,7 +19,7 @@ describe('grouping engine processes', () => {
       p(2660, 56308, 'UnityCrashHandler64.exe', 'Unity.exe'), // grandchild
     ];
     const g = groupProcs(list);
-    expect(g.map(x => x.root.pid).sort()).toEqual([9800, 27456]);
+    expect(g.map(x => x.root.pid).sort((a, b) => a - b)).toEqual([9800, 27456]);
     expect(g.find(x => x.root.pid === 27456)!.count).toBe(4);
     // The grandchild belongs to the application, not to its own parent.
     expect(g.find(x => x.root.pid === 9800)!.count).toBe(4);
