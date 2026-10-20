@@ -3,6 +3,13 @@
 Every release's notes come from this file. Add a section for the new version
 at the top before releasing — the release workflow refuses to run without one.
 
+## [0.38.0] - 2026-10-20
+
+### Fixed
+- **The Engine & GPU card showed one Unity Hub and one build as 13 abandoned sessions.** An engine is a tree — a Unity batch build is nine processes, Unity Hub is six — and the card listed every one of them flatly, each with its own **End it** button. Worse, helpers have no window of their own, so the red "a session that never shut down" warning landed on all of them, including the children of a build that was working perfectly. The card was telling you to kill your own build.
+  - Processes are now grouped into the program they belong to: one row reading `Unity.exe · 9 processes`, not nine rows. Ending it ends the whole tree, and the confirmation says so.
+  - "May be a session that never shut down" is now reserved for a process with no window **whose parent has actually exited**. Anything else says what started it — `started by bash.exe` tells you an agent is running it.
+  - Agents get the same grouped list, so they are no longer told to avoid thirteen separate things that are really two.
 ## [0.37.2] - 2026-09-25
 
 ### Fixed

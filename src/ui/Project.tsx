@@ -4,7 +4,7 @@ import { totalUsage, type Hub } from '../core/store';
 import type { AgentId, Project as P, Task } from '../core/types';
 import { A, T, ago, pct, uid, uniq } from '../core/util';
 import { copyText, endProcess, engineProcs, isDesktop, launchPath, openExternal, type EngineProc } from '../platform';
-import { setEngineProcs } from '../core/runs';
+import { groupProcs, setEngineProcs } from '../core/runs';
 import { RepoCard } from './GitHub';
 import { ArtTab, useProjectImages } from './Media';
 import { StoryTab } from './Story';
@@ -137,13 +137,17 @@ function EngineSlot() {
   setEngineProcs(list || []);
   // Shown even when nothing is running: "the slot is free" is the answer people come here for.
   if (!isDesktop) return null;
-  const end = async (p: EngineProc) => {
+  const groups = groupProcs(list || []);
+  const end = async (p: EngineProc, kids = 0) => {
     const what = p.window
       ? `Window: ${p.window}`
       : batchJob(p)
         ? `This is a headless job — very likely an agent's run in progress.${logOf(p) ? `\nIts log: ${logOf(p)}` : ''}\nEnding it throws that work away.`
-        : 'It has no window — usually a session that never shut down.';
-    if (!window.confirm(`End ${p.name} (PID ${p.pid})?\n\n${what}\n\nAnything unsaved in it is lost.`)) return;
+        : p.parent
+          ? `It was started by ${p.parent}, so something is probably using it.`
+          : 'It has no window and its parent has exited — it may be a session that never shut down.';
+    const also = kids ? `\n\nThis also ends the ${kids} helper process${kids === 1 ? '' : 'es'} it started.` : '';
+    if (!window.confirm(`End ${p.name} (PID ${p.pid})?\n\n${what}${also}\n\nAnything unsaved in it is lost.`)) return;
     setBusy(p.pid);
     try { await endProcess(p.pid); } catch (e) { window.alert(String((e as Error)?.message || e)); }
     setBusy(0);
@@ -152,7 +156,7 @@ function EngineSlot() {
   return (
     <section className="card" style={{ padding: 18, gridColumn: '1 / -1' }}>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-        <h3 className="eyebrow">Engine &amp; GPU{list?.length ? ` · ${list.length} running` : ''}</h3>
+        <h3 className="eyebrow">Engine &amp; GPU{groups.length ? ` · ${groups.length} running` : ''}</h3>
         <button className="link" onClick={load}>Refresh</button>
       </div>
       {!list?.length && (
@@ -161,20 +165,29 @@ function EngineSlot() {
         </p>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {(list || []).map(p => (
-          <div key={p.pid} className="row wrap" style={{ gap: 10, alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '9px 12px' }}>
-            <span style={{ minWidth: 0, flex: 1 }}>
-              <span className="row" style={{ gap: 8 }}>
-                <b style={{ fontSize: 13 }}>{p.name}</b>
-                <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>PID {p.pid} · {p.mb} MB{p.started ? ` · since ${p.started.replace('T', ' ').slice(0, 16)}` : ''}</span>
+        {groups.map(({ root: p, kids, mb, count }) => {
+          // Orphan is only worth saying when the parent is actually gone. A helper of a running
+          // app has no window either, and calling that abandoned is how you get told to end a
+          // build that's working.
+          const stray = !p.window && !batchJob(p) && !p.parent;
+          return (
+            <div key={p.pid} className="row wrap" style={{ gap: 10, alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 10, padding: '9px 12px' }}>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span className="row" style={{ gap: 8 }}>
+                  <b style={{ fontSize: 13 }}>{p.name}</b>
+                  <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>PID {p.pid} · {mb} MB{kids.length ? ` · ${count} processes` : ''}{p.started ? ` · since ${p.started.replace('T', ' ').slice(0, 16)}` : ''}</span>
+                </span>
+                <span className="ellipsis mono" style={{ display: 'block', fontSize: 10.5, color: p.window ? 'var(--text-2)' : batchJob(p) ? 'var(--accent)' : stray ? 'var(--danger)' : 'var(--muted)', marginTop: 2 }}>
+                  {p.window
+                    || (batchJob(p) ? `headless job — ${logOf(p) || 'running unattended, leave it alone'}`
+                    : stray ? 'no window and its parent has exited — may be a session that never shut down'
+                    : `started by ${p.parent}`)}
+                </span>
               </span>
-              <span className="ellipsis mono" style={{ display: 'block', fontSize: 10.5, color: p.window ? 'var(--text-2)' : batchJob(p) ? 'var(--accent)' : 'var(--danger)', marginTop: 2 }}>
-                {p.window || (batchJob(p) ? `headless job — ${logOf(p) || 'running unattended, leave it alone'}` : 'no window — a session that never shut down')}
-              </span>
-            </span>
-            <button className="btn" disabled={busy === p.pid} onClick={() => void end(p)}>{busy === p.pid ? 'Ending…' : 'End it'}</button>
-          </div>
-        ))}
+              <button className="btn" disabled={busy === p.pid} onClick={() => void end(p, kids.length)}>{busy === p.pid ? 'Ending…' : 'End it'}</button>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

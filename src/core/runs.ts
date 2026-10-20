@@ -56,8 +56,36 @@ export function runsContext(key: string, self: AgentId | null, names: Record<Age
 }
 
 /** Engines running on this computer, so agents can see what holds the GPU before asking for it. */
-let engines: { name: string; pid: number; window: string; mb: number; started: string; cmd?: string }[] = [];
-export const setEngineProcs = (list: typeof engines) => { engines = list; };
+export interface Proc { name: string; pid: number; ppid?: number; parent?: string; window: string; mb: number; started: string; cmd?: string }
+let engines: Proc[] = [];
+export const setEngineProcs = (list: Proc[]) => { engines = list; };
+
+/** One running application, with the helper processes it started. */
+export interface ProcGroup { root: Proc; kids: Proc[]; mb: number; count: number }
+
+/**
+ * Group processes into the applications they actually are.
+ *
+ * An engine is a tree: one Unity batch build is nine processes, Unity Hub is six, and listing
+ * them flat turns two running apps into thirteen alarming rows each offering to end something.
+ * Worse, the helpers have no window, so the "a session that never shut down" warning lands on
+ * every one of them — including the children of a build that is working perfectly.
+ */
+export function groupProcs(list: Proc[]): ProcGroup[] {
+  const byPid = new Map(list.map(p => [p.pid, p]));
+  const roots = list.filter(p => !p.ppid || !byPid.has(p.ppid));
+  return roots.map(root => {
+    // Walk down from the root so a grandchild lands under the app, not under its own parent.
+    const kids: Proc[] = [];
+    let frontier = [root.pid];
+    while (frontier.length) {
+      const next = list.filter(p => p.pid !== root.pid && frontier.includes(p.ppid || -1));
+      kids.push(...next);
+      frontier = next.map(p => p.pid);
+    }
+    return { root, kids, count: kids.length + 1, mb: [root, ...kids].reduce((n, p) => n + p.mb, 0) };
+  });
+}
 
 /** Headless on purpose (a commandlet, an offscreen render) rather than a window that never closed. */
 const isBatch = (e: { name: string; cmd?: string }) =>
@@ -66,13 +94,19 @@ const isBatch = (e: { name: string; cmd?: string }) =>
 export function engineContext(): string[] {
   if (!engines.length) return [];
   return [
-    'Engine processes running on this computer right now (the single GPU slot):',
-    ...engines.map(e => {
+    'Engines running on this computer right now (the single GPU slot). Each line is one program,'
+    + ' with the helper processes it started counted in — ending the first ends all of them:',
+    ...groupProcs(engines).map(g => {
+      const e = g.root;
       const how = /^unrealbuildtool$/i.test(e.name) ? ' — a build in progress'
         : e.window ? ` — window "${e.window}"`
         : isBatch(e) ? ' — headless job, probably a run already in progress'
-        : ' — no window, likely a session that never shut down';
-      return `- ${e.name} (PID ${e.pid}, ${e.mb} MB${e.started ? `, since ${e.started.replace('T', ' ').slice(0, 16)}` : ''})${how}`;
+        // Only a root whose parent is gone is a candidate leftover, and even then an app whose
+        // launcher has exited looks exactly like this. Say what's known, not what's assumed.
+        : e.parent ? ` — started by ${e.parent}`
+        : ' — no window and its parent has exited; may be a session that never shut down';
+      const also = g.kids.length ? `, ${g.count} processes` : '';
+      return `- ${e.name} (PID ${e.pid}, ${g.mb} MB${also}${e.started ? `, since ${e.started.replace('T', ' ').slice(0, 16)}` : ''})${how}`;
     }),
     'Do not start an engine or GPU capture while one of these is running, and never end one yourself: name it and let the user decide.',
     // Two UnrealBuildTool instances started together race on the same Trace.uba file and one dies

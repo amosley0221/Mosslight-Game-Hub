@@ -208,6 +208,11 @@ async fn find_builds(root: String, max: usize) -> Result<Vec<FoundFile>, String>
 #[serde(rename_all = "camelCase")]
 struct EngineProc {
     pid: u32,
+    /// The process that started this one. An engine is a tree — one Unity build is a dozen
+    /// processes — so without this every helper looks like an abandoned session of its own.
+    ppid: u32,
+    /// Name of the parent, or empty when the parent has already exited.
+    parent: String,
     name: String,
     /// Empty when the process has no window — usually a play session that never shut down.
     window: String,
@@ -221,7 +226,7 @@ struct EngineProc {
 async fn engine_procs() -> Result<Vec<EngineProc>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let out = if cfg!(windows) {
-            let ps = r#"@(Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(UnrealEditor|UnrealEditor-Cmd|UE4Editor|blender|blender-launcher|Unity|godot)' -or ($_.Name -match '^dotnet' -and $_.CommandLine -match 'UnrealBuildTool|AutomationTool') } | ForEach-Object { $u = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; [pscustomobject]@{ pid = [int]$_.ProcessId; name = $(if ($_.Name -match '^dotnet') { 'UnrealBuildTool' } else { $_.Name }); cmd = [string]$_.CommandLine; mb = [int]($_.WorkingSetSize / 1MB); started = $_.CreationDate.ToString('s'); window = if ($u -and $u.MainWindowHandle -ne 0) { [string]$u.MainWindowTitle } else { '' } } }) | ConvertTo-Json -Compress"#;
+            let ps = r#"$all = @(Get-CimInstance Win32_Process); $names = @{}; foreach ($x in $all) { $names[[int]$x.ProcessId] = $x.Name }; @($all | Where-Object { $_.Name -match '^(UnrealEditor|UnrealEditor-Cmd|UE4Editor|blender|blender-launcher|Unity|godot)' -or ($_.Name -match '^dotnet' -and $_.CommandLine -match 'UnrealBuildTool|AutomationTool') } | ForEach-Object { $u = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue; [pscustomobject]@{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; parent = [string]$names[[int]$_.ParentProcessId]; name = $(if ($_.Name -match '^dotnet') { 'UnrealBuildTool' } else { $_.Name }); cmd = [string]$_.CommandLine; mb = [int]($_.WorkingSetSize / 1MB); started = $_.CreationDate.ToString('s'); window = if ($u -and $u.MainWindowHandle -ne 0) { [string]$u.MainWindowTitle } else { '' } } }) | ConvertTo-Json -Compress"#;
             run(Path::new("powershell"), &["-NoProfile", "-NonInteractive", "-Command", ps])?
         } else {
             let sh = r#"ps -axo pid=,rss=,lstart=,command= | grep -Ei '(UnrealEditor|UE4Editor|blender|Unity|godot|UnrealBuildTool|AutomationTool)' | grep -v grep"#;
@@ -237,7 +242,7 @@ async fn engine_procs() -> Result<Vec<EngineProc>, String> {
                     let mb = rss.trim().parse::<u64>().unwrap_or(0) / 1024;
                     let cmd = rest.trim();
                     let name = cmd.split('/').next_back().unwrap_or(cmd).split_whitespace().next().unwrap_or("").to_string();
-                    Some(serde_json::json!({ "pid": pid, "name": name, "cmd": cmd, "mb": mb, "started": "", "window": "" }).to_string())
+                    Some(serde_json::json!({ "pid": pid, "ppid": 0, "parent": "", "name": name, "cmd": cmd, "mb": mb, "started": "", "window": "" }).to_string())
                 })
                 .collect();
             format!("[{}]", rows.join(","))
@@ -253,6 +258,8 @@ async fn engine_procs() -> Result<Vec<EngineProc>, String> {
             .into_iter()
             .map(|v| EngineProc {
                 pid: v.get("pid").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
+                ppid: v.get("ppid").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
+                parent: v.get("parent").and_then(|x| x.as_str()).unwrap_or("").to_string(),
                 name: v.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string(),
                 window: v.get("window").and_then(|x| x.as_str()).unwrap_or("").to_string(),
                 mb: v.get("mb").and_then(|x| x.as_u64()).unwrap_or(0),
